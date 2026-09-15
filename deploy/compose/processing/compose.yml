@@ -1,0 +1,20 @@
+services:
+  processing-migrate:
+    build:
+      context: ../../..
+      dockerfile: processing/Dockerfile
+      target: migrate
+      args:
+        GOOSE_VERSION: ${GOOSE_VERSION}
+    environment:
+      GOOSE_DBSTRING: >-
+        host=postgres port=5432 user=${PROCESSING_MIGRATOR_USER}
+        password=${PROCESSING_MIGRATOR_PASSWORD} dbname=${PROCESSING_DB} sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-bootstrap:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - relay-net

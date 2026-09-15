@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.vscode
+
+bin
+coverage
+tmp
+
+**/.env
+deploy/env/*.env
