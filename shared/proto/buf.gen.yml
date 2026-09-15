@@ -1,0 +1,17 @@
+version: v2
+
+clean: true
+
+inputs:
+  - directory: .
+
+plugins:
+  - local: ../../bin/protoc-gen-go
+    out: ../pkg/proto
+    opt:
+      - paths=source_relative
+
+  - local: ../../bin/protoc-gen-go-grpc
+    out: ../pkg/proto
+    opt:
+      - paths=source_relative

@@ -1,0 +1,10 @@
+go 1.27.0
+
+use (
+	./content
+	./delivery
+	./identity
+	./platform
+	./processing
+	./shared
+)
