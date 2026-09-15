@@ -1,0 +1,141 @@
+services:
+  postgres:
+    image: postgres:18.4-trixie
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: postgres
+    ports:
+      - "${POSTGRES_BIND_HOST}:${POSTGRES_EXTERNAL_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - relay-net
+
+  db-bootstrap:
+    image: postgres:18.4-trixie
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      CONTENT_DB: ${CONTENT_DB}
+      CONTENT_APP_USER: ${CONTENT_APP_USER}
+      CONTENT_APP_PASSWORD: ${CONTENT_APP_PASSWORD}
+      CONTENT_MIGRATOR_USER: ${CONTENT_MIGRATOR_USER}
+      CONTENT_MIGRATOR_PASSWORD: ${CONTENT_MIGRATOR_PASSWORD}
+      DELIVERY_DB: ${DELIVERY_DB}
+      DELIVERY_APP_USER: ${DELIVERY_APP_USER}
+      DELIVERY_APP_PASSWORD: ${DELIVERY_APP_PASSWORD}
+      DELIVERY_MIGRATOR_USER: ${DELIVERY_MIGRATOR_USER}
+      DELIVERY_MIGRATOR_PASSWORD: ${DELIVERY_MIGRATOR_PASSWORD}
+      IDENTITY_DB: ${IDENTITY_DB}
+      IDENTITY_APP_USER: ${IDENTITY_APP_USER}
+      IDENTITY_APP_PASSWORD: ${IDENTITY_APP_PASSWORD}
+      IDENTITY_MIGRATOR_USER: ${IDENTITY_MIGRATOR_USER}
+      IDENTITY_MIGRATOR_PASSWORD: ${IDENTITY_MIGRATOR_PASSWORD}
+      PROCESSING_DB: ${PROCESSING_DB}
+      PROCESSING_APP_USER: ${PROCESSING_APP_USER}
+      PROCESSING_APP_PASSWORD: ${PROCESSING_APP_PASSWORD}
+      PROCESSING_MIGRATOR_USER: ${PROCESSING_MIGRATOR_USER}
+      PROCESSING_MIGRATOR_PASSWORD: ${PROCESSING_MIGRATOR_PASSWORD}
+    volumes:
+      - ../../postgres:/bootstrap:ro
+    entrypoint: ["bash", "/bootstrap/bootstrap.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - relay-net
+
+  kafka:
+    image: confluentinc/cp-kafka:8.3.1
+    ports:
+      - "${KAFKA_BIND_HOST}:${KAFKA_EXTERNAL_PORT}:${KAFKA_EXTERNAL_PORT}"
+    environment:
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:${KAFKA_CONTROLLER_PORT}"
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:${KAFKA_INTERNAL_PORT},PLAINTEXT_EXTERNAL://0.0.0.0:${KAFKA_EXTERNAL_PORT},CONTROLLER://0.0.0.0:${KAFKA_CONTROLLER_PORT}
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:${KAFKA_INTERNAL_PORT},PLAINTEXT_EXTERNAL://localhost:${KAFKA_EXTERNAL_PORT}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:${KAFKA_INTERNAL_PORT} --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - relay-net
+
+  kafka-init:
+    image: confluentinc/cp-kafka:8.3.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - bash
+      - -ec
+      - |
+        kafka-topics --bootstrap-server kafka:${KAFKA_INTERNAL_PORT} \
+          --create --if-not-exists \
+          --topic "${KAFKA_PROCESSING_TOPIC}" \
+          --partitions 3 \
+          --replication-factor 1
+        kafka-topics --bootstrap-server kafka:${KAFKA_INTERNAL_PORT} \
+          --create --if-not-exists \
+          --topic "${KAFKA_LIFECYCLE_TOPIC}" \
+          --partitions 3 \
+          --replication-factor 1
+    restart: "no"
+    networks:
+      - relay-net
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:v1.5.0
+    ports:
+      - "${KAFKA_UI_BIND_HOST}:${KAFKA_UI_PORT}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: relay-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:${KAFKA_INTERNAL_PORT}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - relay-net
+
+volumes:
+  postgres_data:
+  kafka_data:
+
+networks:
+  relay-net:
+    driver: bridge
