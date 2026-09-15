@@ -1,0 +1,108 @@
+version: "2"
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  issues-exit-code: 1
+  tests: true
+  modules-download-mode: readonly
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false
+
+linters:
+  default: standard
+
+  enable:
+    # Security
+    - bidichk
+    - gosec
+
+    # HTTP / context
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - fatcontext
+    - noctx
+    - nosprintfhostport
+
+    # Errors
+    - errchkjson
+    - errname
+    - errorlint
+    - nilerr
+    - nilnil
+
+    # Correctness
+    - durationcheck
+    - exhaustive
+    - gocheckcompilerdirectives
+    - gocritic
+    - makezero
+    - mirror
+    - predeclared
+    - unconvert
+    - unparam
+    - wastedassign
+
+    # Maintainability
+    - cyclop
+    - dupl
+    - forbidigo
+    - nolintlint
+
+    # Tests
+    - testifylint
+    - thelper
+    - usetesting
+
+    # Database
+    - sqlclosecheck
+
+  settings:
+    cyclop:
+      max-complexity: 15
+
+    govet:
+      enable:
+        - shadow
+
+    forbidigo:
+      forbid:
+        - pattern: '^print(ln)?$'
+        - pattern: '^fmt\.Print.*$'
+          msg: use the project logger instead of fmt.Print*
+
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+
+  exclusions:
+    generated: strict
+    warn-unused: true
+
+    rules:
+      - path: _test\.go
+        linters:
+          - cyclop
+          - dupl
+          - gosec
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule
+
+  exclusions:
+    generated: strict
+    warn-unused: true
