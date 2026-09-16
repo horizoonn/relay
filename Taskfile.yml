@@ -1,0 +1,455 @@
+version: "3"
+
+vars:
+  GOLANGCI_LINT_VERSION: "v2.13.2"
+  BUF_VERSION: "v1.73.0"
+  PROTOC_GEN_GO_VERSION: "v1.36.12"
+  PROTOC_GEN_GO_GRPC_VERSION: "v1.6.2"
+  PROTOC_GEN_GRPC_GATEWAY_VERSION: "v2.30.0"
+  PROTOC_GEN_OPENAPIV2_VERSION: "v2.30.0"
+
+  GOOSE_VERSION: "v3.27.3"
+  OGEN_VERSION: "v1.24.0"
+  YQ_VERSION: "v4.53.6"
+  GRPCURL_VERSION: "v1.9.4"
+  ENVSUBST_VERSION: "v1.4.3"
+  GOVULNCHECK_VERSION: "v1.1.4"
+
+  BIN_DIR: "{{.ROOT_DIR}}/bin"
+
+  GOLANGCI_LINT: "{{.BIN_DIR}}/golangci-lint"
+  BUF: "{{.BIN_DIR}}/buf"
+  GOOSE: "{{.BIN_DIR}}/goose"
+  OGEN: "{{.BIN_DIR}}/ogen"
+  YQ: "{{.BIN_DIR}}/yq"
+  GRPCURL: "{{.BIN_DIR}}/grpcurl"
+  ENVSUBST: "{{.BIN_DIR}}/envsubst"
+  GOVULNCHECK: "{{.BIN_DIR}}/govulncheck"
+
+  ENVDIR: "{{.ROOT_DIR}}/deploy/env"
+
+  CORE_ENV_FILE: "{{.ROOT_DIR}}/deploy/env/core.env"
+  CONTENT_ENV_FILE: "{{.ROOT_DIR}}/deploy/env/content.env"
+  DELIVERY_ENV_FILE: "{{.ROOT_DIR}}/deploy/env/delivery.env"
+  PROCESSING_ENV_FILE: "{{.ROOT_DIR}}/deploy/env/processing.env"
+  IDENTITY_ENV_FILE: "{{.ROOT_DIR}}/deploy/env/identity.env"
+
+  CORE_COMPOSE_FILE: "{{.ROOT_DIR}}/deploy/compose/core/compose.yml"
+  CONTENT_COMPOSE_FILE: "{{.ROOT_DIR}}/deploy/compose/content/compose.yml"
+  DELIVERY_COMPOSE_FILE: "{{.ROOT_DIR}}/deploy/compose/delivery/compose.yml"
+  PROCESSING_COMPOSE_FILE: "{{.ROOT_DIR}}/deploy/compose/processing/compose.yml"
+  IDENTITY_COMPOSE_FILE: "{{.ROOT_DIR}}/deploy/compose/identity/compose.yml"
+  COMPOSE_FILE: "{{.ROOT_DIR}}/compose.yml"
+  COMPOSE: >-
+    docker compose
+    --env-file "{{.CORE_ENV_FILE}}"
+    --env-file "{{.CONTENT_ENV_FILE}}"
+    --env-file "{{.DELIVERY_ENV_FILE}}"
+    --env-file "{{.IDENTITY_ENV_FILE}}"
+    --env-file "{{.PROCESSING_ENV_FILE}}"
+    -f "{{.COMPOSE_FILE}}"
+
+  MODULES: '{{env "MODULES" | default "content delivery processing identity platform shared"}}'
+  SERVICES: '{{env "SERVICES" | default "core,content,delivery,processing,identity"}}'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  tools:golangci-lint:
+    internal: true
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.GOLANGCI_LINT}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install \
+            github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+        fi
+
+  tools:buf:
+    internal: true
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.BUF}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install github.com/bufbuild/buf/cmd/buf@{{.BUF_VERSION}}
+        fi
+
+  tools:protoc-plugins:
+    internal: true
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.BIN_DIR}}/protoc-gen-go" ]; then
+          GOBIN="{{.BIN_DIR}}" go install google.golang.org/protobuf/cmd/protoc-gen-go@{{.PROTOC_GEN_GO_VERSION}}
+        fi
+        if [ ! -x "{{.BIN_DIR}}/protoc-gen-go-grpc" ]; then
+          GOBIN="{{.BIN_DIR}}" go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@{{.PROTOC_GEN_GO_GRPC_VERSION}}
+        fi
+
+  tools:govulncheck:
+    internal: true
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.GOVULNCHECK}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}
+        fi
+
+  fmt:
+    desc: Format all Go modules
+    cmds:
+      - |
+        set -e
+        tool_ready=0
+
+        for mod in {{.MODULES}}; do
+          if ! find "$mod" -type f -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+            echo "Skipping empty module $mod"
+            continue
+          fi
+          if [ "$tool_ready" -eq 0 ]; then
+            task tools:golangci-lint
+            tool_ready=1
+          fi
+          echo "🎨 Formatting $mod"
+          (
+            cd "$mod"
+            "{{.GOLANGCI_LINT}}" fmt --config="../.golangci.yml" ./...
+          )
+        done
+
+  lint:
+    desc: Lint all Go modules
+    cmds:
+      - |
+        set -e
+        ERR=0
+        tool_ready=0
+
+        for mod in {{.MODULES}}; do
+          if ! find "$mod" -type f -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+            echo "Skipping empty module $mod"
+            continue
+          fi
+          if [ "$tool_ready" -eq 0 ]; then
+            task tools:golangci-lint
+            tool_ready=1
+          fi
+          echo "🔍 Linting $mod"
+
+          (
+            cd "$mod"
+            "{{.GOLANGCI_LINT}}" run --config="../.golangci.yml" ./...
+          ) || ERR=1
+        done
+
+        exit $ERR
+
+  vet:
+    desc: Run go vet in all non-empty Go modules
+    cmds:
+      - |
+        set -e
+        for mod in {{.MODULES}}; do
+          if ! find "$mod" -type f -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+            echo "Skipping empty module $mod"
+            continue
+          fi
+          echo "Vetting $mod"
+          (cd "$mod" && GOWORK=off go vet ./...)
+        done
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - |
+        set -e
+        ERR=0
+
+        for mod in {{.MODULES}}; do
+          if ! find "$mod" -type f -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+            echo "Skipping empty module $mod"
+            continue
+          fi
+          echo "🧪 Testing $mod"
+
+          (
+            cd "$mod"
+            GOWORK=off go test ./...
+          ) || ERR=1
+        done
+
+        exit $ERR
+
+  check:
+    desc: Run local checks
+    cmds:
+      - task: vet
+      - task: lint
+      - task: test
+
+  fmt:check:
+    desc: Check formatting without changing files
+    cmds:
+      - |
+        set -e
+        tool_ready=0
+        for mod in {{.MODULES}}; do
+          if ! find "$mod" -type f -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+            echo "Skipping empty module $mod"
+            continue
+          fi
+          if [ "$tool_ready" -eq 0 ]; then
+            task tools:golangci-lint
+            tool_ready=1
+          fi
+          (
+            cd "$mod"
+            "{{.GOLANGCI_LINT}}" fmt --diff --config="../.golangci.yml" ./...
+          )
+        done
+
+  build:
+    desc: Build all non-empty Go modules
+    cmds:
+      - |
+        set -e
+        for mod in {{.MODULES}}; do
+          if ! find "$mod" -type f -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+            echo "Skipping empty module $mod"
+            continue
+          fi
+          echo "Building $mod"
+          (cd "$mod" && GOWORK=off go build ./...)
+        done
+
+  test:race:
+    desc: Run race-enabled tests in non-empty Go modules
+    cmds:
+      - |
+        set -e
+        for mod in {{.MODULES}}; do
+          if ! find "$mod" -type f -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+            echo "Skipping empty module $mod"
+            continue
+          fi
+          echo "Race testing $mod"
+          (cd "$mod" && GOWORK=off go test -race ./...)
+        done
+
+  test:integration:
+    desc: Run infrastructure integration checks
+    cmds:
+      - task: compose:test
+
+  deps:tidy:
+    desc: Run go mod tidy for all modules
+    cmds:
+      - |
+        set -e
+
+        for mod in {{.MODULES}}; do
+          echo "📦 Tidying $mod"
+          (
+            cd "$mod"
+            GOWORK=off go mod tidy
+          )
+        done
+
+  deps:check:
+    desc: Check whether Go module metadata is tidy
+    cmds:
+      - |
+        set -e
+        for mod in {{.MODULES}}; do
+          echo "Checking dependencies in $mod"
+          (cd "$mod" && GOWORK=off go mod tidy -diff)
+        done
+
+  proto:lint:
+    desc: Lint protobuf contracts when they exist
+    cmds:
+      - |
+        if ! find shared/proto -type f -name '*.proto' -print -quit | grep -q .; then
+          echo "No protobuf contracts; skipping lint"
+          exit 0
+        fi
+        task tools:buf
+        "{{.BUF}}" lint shared/proto
+
+  proto:generate:
+    desc: Generate Go code from protobuf contracts when they exist
+    cmds:
+      - |
+        if ! find shared/proto -type f -name '*.proto' -print -quit | grep -q .; then
+          echo "No protobuf contracts; skipping generation"
+          exit 0
+        fi
+        task tools:buf
+        task tools:protoc-plugins
+        (cd shared/proto && "{{.BUF}}" generate)
+
+  proto:deps:
+    desc: Explicitly update pinned protobuf dependencies
+    cmds:
+      - |
+        if ! find shared/proto -type f -name '*.proto' -print -quit | grep -q .; then
+          echo "No protobuf contracts; skipping dependency update"
+          exit 0
+        fi
+        task tools:buf
+        (cd shared/proto && "{{.BUF}}" dep update)
+
+  proto:breaking:
+    desc: Check protobuf compatibility against main when contracts exist
+    cmds:
+      - |
+        if ! find shared/proto -type f -name '*.proto' -print -quit | grep -q .; then
+          echo "No protobuf contracts; skipping breaking check"
+          exit 0
+        fi
+        task tools:buf
+        "{{.BUF}}" breaking shared/proto --against '.git#branch=main,subdir=shared/proto'
+
+  generate:
+    desc: Generate all current contracts
+    cmds:
+      - task: proto:generate
+
+  vuln:
+    desc: Scan non-empty Go modules for known vulnerabilities
+    cmds:
+      - |
+        set -e
+        tool_ready=0
+        for mod in {{.MODULES}}; do
+          if ! find "$mod" -type f -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+            echo "Skipping empty module $mod"
+            continue
+          fi
+          if [ "$tool_ready" -eq 0 ]; then
+            task tools:govulncheck
+            tool_ready=1
+          fi
+          echo "Scanning $mod"
+          (cd "$mod" && GOWORK=off "{{.GOVULNCHECK}}" ./...)
+        done
+
+  env:init:
+    desc: Create missing local env files from committed templates
+    cmds:
+      - |
+        set -e
+        for name in core content delivery identity processing; do
+          target="{{.ENVDIR}}/$name.env"
+          template="$target.template"
+          if [ ! -f "$target" ]; then
+            install -m 600 "$template" "$target"
+            echo "Created $target"
+          fi
+          chmod 600 "$target"
+        done
+
+  infra:config:
+    desc: Validate the complete Docker Compose configuration
+    deps: [env:init]
+    preconditions:
+      - sh: test -f "{{.CORE_ENV_FILE}}"
+        msg: "Missing {{.CORE_ENV_FILE}}"
+      - sh: test -f "{{.CONTENT_ENV_FILE}}"
+        msg: "Missing {{.CONTENT_ENV_FILE}}"
+      - sh: test -f "{{.DELIVERY_ENV_FILE}}"
+        msg: "Missing {{.DELIVERY_ENV_FILE}}"
+      - sh: test -f "{{.IDENTITY_ENV_FILE}}"
+        msg: "Missing {{.IDENTITY_ENV_FILE}}"
+      - sh: test -f "{{.PROCESSING_ENV_FILE}}"
+        msg: "Missing {{.PROCESSING_ENV_FILE}}"
+      - sh: test -f "{{.COMPOSE_FILE}}"
+        msg: "Missing {{.COMPOSE_FILE}}"
+    cmds:
+      - "{{.COMPOSE}} config --quiet"
+
+  compose:config:
+    desc: Validate the complete Docker Compose configuration
+    cmds:
+      - task: infra:config
+
+  infra:up:
+    desc: Start PostgreSQL, Kafka, topics, and Kafka UI
+    deps: [infra:config]
+    cmds:
+      - "{{.COMPOSE}} up -d --wait postgres kafka"
+      - "{{.COMPOSE}} up --no-log-prefix kafka-init"
+      - "{{.COMPOSE}} up -d --wait kafka-ui"
+
+  db:bootstrap:
+    desc: Idempotently create service databases and roles
+    deps: [infra:config]
+    cmds:
+      - "{{.COMPOSE}} run --rm db-bootstrap"
+
+  db:verify:
+    desc: Verify service role connectivity and isolation
+    deps: [infra:config]
+    cmds:
+      - >-
+        {{.COMPOSE}} run --rm --no-deps
+        --entrypoint bash db-bootstrap /bootstrap/verify-isolation.sh
+
+  migrate:
+    desc: Apply SQL migrations for SERVICE=content|delivery|identity|processing
+    requires:
+      vars: [SERVICE]
+    preconditions:
+      - sh: 'case "{{.SERVICE}}" in content|delivery|identity|processing) exit 0 ;; *) exit 1 ;; esac'
+        msg: "SERVICE must be one of: content, delivery, identity, processing"
+    cmds:
+      - "{{.COMPOSE}} run --rm --no-deps --build {{.SERVICE}}-migrate"
+
+  migrate:all:
+    desc: Apply SQL migrations for all services
+    cmds:
+      - task: migrate
+        vars: {SERVICE: content}
+      - task: migrate
+        vars: {SERVICE: delivery}
+      - task: migrate
+        vars: {SERVICE: identity}
+      - task: migrate
+        vars: {SERVICE: processing}
+
+  stack:up:
+    desc: Start infrastructure, bootstrap databases, and apply migrations
+    cmds:
+      - task: infra:up
+      - task: db:bootstrap
+      - task: migrate:all
+      - task: db:verify
+
+  infra:down:
+    desc: Stop the local stack without deleting persisted data
+    deps: [env:init]
+    cmds:
+      - "{{.COMPOSE}} down --remove-orphans"
+
+  compose:test:
+    desc: Start an isolated stack and verify bootstrap and migrations twice
+    deps: [env:init]
+    cmds:
+      - |
+        set -e
+        export COMPOSE_PROJECT_NAME="relay-ci-${GITHUB_RUN_ID:-local}"
+        cleanup() {
+          {{.COMPOSE}} down --volumes --remove-orphans
+        }
+        trap cleanup EXIT
+
+        task infra:up
+        task db:bootstrap
+        task migrate:all
+        task db:bootstrap
+        task migrate:all
+        task db:verify

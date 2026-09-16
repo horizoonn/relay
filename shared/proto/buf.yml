@@ -1,0 +1,20 @@
+version: v2
+
+modules:
+  - path: .
+
+deps:
+  - buf.build/bufbuild/protovalidate
+  - buf.build/googleapis/googleapis
+
+lint:
+  use:
+    - STANDARD
+    - COMMENT_ENUM
+    - COMMENT_MESSAGE
+    - COMMENT_SERVICE
+    - COMMENT_RPC
+
+breaking:
+  use:
+    - FILE

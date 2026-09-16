@@ -1,0 +1,6 @@
+include:
+  - path: deploy/compose/core/compose.yml
+  - path: deploy/compose/content/compose.yml
+  - path: deploy/compose/delivery/compose.yml
+  - path: deploy/compose/identity/compose.yml
+  - path: deploy/compose/processing/compose.yml
