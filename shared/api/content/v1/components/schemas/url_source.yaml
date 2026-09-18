@@ -1,0 +1,17 @@
+type: object
+additionalProperties: false
+required:
+  - type
+  - url
+properties:
+  type:
+    type: string
+    enum:
+      - url
+  url:
+    type: string
+    format: uri
+    minLength: 1
+    maxLength: 8192
+    x-relay-max-utf8-bytes: 8192
+    description: Exact immutable OriginalURL supplied by the user.

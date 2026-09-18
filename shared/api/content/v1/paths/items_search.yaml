@@ -1,0 +1,35 @@
+get:
+  operationId: SearchItems
+  summary: Search active Items
+  description: |
+    Search is case-insensitive. One- and two-code-point queries search
+    DisplayTitle exact/prefix only. Longer queries use deterministic field and
+    match tiers defined by the Stage 1 API design baseline.
+  tags:
+    - Collections
+  parameters:
+    - $ref: ../components/parameters/search_query.yaml
+    - $ref: ../components/parameters/limit.yaml
+    - $ref: ../components/parameters/cursor.yaml
+  responses:
+    '200':
+      description: Page of matching active Items.
+      headers:
+        X-Request-ID:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/item_page.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

@@ -26,6 +26,12 @@ vars:
   ENVSUBST: "{{.BIN_DIR}}/envsubst"
   GOVULNCHECK: "{{.BIN_DIR}}/govulncheck"
 
+  NODE_MODULES_DIR: "{{.ROOT_DIR}}/node_modules/.bin"
+  REDOCLY: "{{.NODE_MODULES_DIR}}/redocly"
+
+  CONTENT_OPENAPI_SOURCE: "{{.ROOT_DIR}}/shared/api/content/v1/content.openapi.yaml"
+  CONTENT_OPENAPI_BUNDLE: "{{.ROOT_DIR}}/shared/api/bundles/content.openapi.v1.bundle.yaml"
+
   ENVDIR: "{{.ROOT_DIR}}/deploy/env"
 
   CORE_ENV_FILE: "{{.ROOT_DIR}}/deploy/env/core.env"
@@ -96,6 +102,32 @@ tasks:
       - |
         if [ ! -x "{{.GOVULNCHECK}}" ]; then
           GOBIN="{{.BIN_DIR}}" go install golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}
+        fi
+
+  tools:ogen:
+    internal: true
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.OGEN}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install github.com/ogen-go/ogen/cmd/ogen@{{.OGEN_VERSION}}
+        fi
+
+  tools:yq:
+    internal: true
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.YQ}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install github.com/mikefarah/yq/v4@{{.YQ_VERSION}}
+        fi
+
+  tools:redocly:
+    internal: true
+    cmds:
+      - |
+        if [ ! -x "{{.REDOCLY}}" ]; then
+          npm ci --ignore-scripts
         fi
 
   fmt:
@@ -314,10 +346,56 @@ tasks:
         task tools:buf
         "{{.BUF}}" breaking shared/proto --against '.git#branch=main,subdir=shared/proto'
 
+  openapi:lint:
+    desc: Lint OpenAPI source contracts
+    deps: [tools:redocly]
+    cmds:
+      - '"{{.REDOCLY}}" lint "{{.CONTENT_OPENAPI_SOURCE}}"'
+
+  openapi:bundle:
+    desc: Bundle OpenAPI source contracts for generation and distribution
+    deps: [tools:redocly]
+    cmds:
+      - mkdir -p "{{.ROOT_DIR}}/shared/api/bundles"
+      - '"{{.REDOCLY}}" bundle "{{.CONTENT_OPENAPI_SOURCE}}" --output "{{.CONTENT_OPENAPI_BUNDLE}}"'
+
+  openapi:generate:
+    desc: Generate Go code from bundled OpenAPI contracts
+    deps: [tools:ogen, tools:yq]
+    cmds:
+      - task: openapi:bundle
+      - |
+        target=$("{{.YQ}}" e '."x-ogen".target' "{{.CONTENT_OPENAPI_BUNDLE}}")
+        package=$("{{.YQ}}" e '."x-ogen".package' "{{.CONTENT_OPENAPI_BUNDLE}}")
+        if [ -z "$target" ] || [ "$target" = "null" ] || [ -z "$package" ] || [ "$package" = "null" ]; then
+          echo "Missing x-ogen target/package in {{.CONTENT_OPENAPI_BUNDLE}}" >&2
+          exit 1
+        fi
+        case "$target" in
+          /*) ;;
+          *) target="{{.ROOT_DIR}}/${target#./}" ;;
+        esac
+        mkdir -p "$target"
+        (
+          cd "$target"
+          "{{.OGEN}}" \
+            --target . \
+            --package "$package" \
+            --clean \
+            "{{.CONTENT_OPENAPI_BUNDLE}}"
+        )
+
+  contracts:lint:
+    desc: Lint all machine-readable contracts
+    cmds:
+      - task: proto:lint
+      - task: openapi:lint
+
   generate:
     desc: Generate all current contracts
     cmds:
       - task: proto:generate
+      - task: openapi:generate
 
   vuln:
     desc: Scan non-empty Go modules for known vulnerabilities

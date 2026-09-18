@@ -1,0 +1,47 @@
+type: object
+additionalProperties: false
+required:
+  - id
+  - source
+  - keep
+  - review_status
+  - created_at
+  - updated_at
+  - last_captured_at
+properties:
+  id:
+    $ref: ./item_id.yaml
+  source:
+    $ref: ./source.yaml
+  display_title:
+    type: string
+    minLength: 1
+    maxLength: 256
+    description: User title override. Omitted when no override exists; whitespace-only values are invalid.
+  keep:
+    type: boolean
+  review_status:
+    $ref: ./review_status.yaml
+  created_at:
+    type: string
+    format: date-time
+    description: Time of the first Capture.
+  updated_at:
+    type: string
+    format: date-time
+    description: Time of the last persisted mutable-state change.
+  last_captured_at:
+    type: string
+    format: date-time
+    description: Time of the most recent Capture interaction for this Item.
+example:
+  id: 018f3f54-7c9d-7e3a-8a5b-32fc7b0db4aa
+  source:
+    type: url
+    url: https://example.com/postgresql-mvcc
+  display_title: PostgreSQL MVCC
+  keep: true
+  review_status: later
+  created_at: "2026-09-18T10:15:30Z"
+  updated_at: "2026-09-18T10:20:00Z"
+  last_captured_at: "2026-09-18T10:15:30Z"

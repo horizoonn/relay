@@ -1,0 +1,57 @@
+openapi: 3.0.3
+
+info:
+  title: Relay Content API
+  version: 1.0.0
+  description: |
+    Public HTTP contract for Relay Content Stage 1.
+
+    The API captures URL and text sources, exposes Item user context, and provides
+    Recent, Library, Later, and Search read surfaces. The authenticated owner is
+    derived from Identity and is never supplied by the client.
+
+servers:
+  - url: /
+
+tags:
+  - name: Capture
+    description: Capture immutable URL or text sources.
+  - name: Items
+    description: Read, update, and delete owner-scoped Items.
+  - name: Collections
+    description: Read owner-scoped Recent, Library, Later, and Search views.
+
+security:
+  - accessCookie: []
+
+x-ogen:
+  target: ./shared/pkg/openapi/content/v1
+  package: content_v1
+  clean: true
+
+paths:
+  /api/v1/items:
+    $ref: ./paths/items.yaml
+  /api/v1/items/recent:
+    $ref: ./paths/items_recent.yaml
+  /api/v1/items/library:
+    $ref: ./paths/items_library.yaml
+  /api/v1/items/later:
+    $ref: ./paths/items_later.yaml
+  /api/v1/items/search:
+    $ref: ./paths/items_search.yaml
+  /api/v1/items/{item_id}:
+    $ref: ./paths/item_by_id.yaml
+
+components:
+  securitySchemes:
+    accessCookie:
+      type: apiKey
+      in: cookie
+      name: relay_access_token
+      description: Secure, HttpOnly, SameSite opaque access-token cookie issued by Identity.
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: CSRF token required together with the access cookie for state-changing requests.

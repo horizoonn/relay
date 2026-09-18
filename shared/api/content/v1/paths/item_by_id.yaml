@@ -1,0 +1,116 @@
+parameters:
+  - $ref: ../components/parameters/item_id.yaml
+
+get:
+  operationId: GetItem
+  summary: Get an Item
+  description: Missing, foreign, and deleted Items all return ITEM_NOT_FOUND.
+  tags:
+    - Items
+  responses:
+    '200':
+      description: Current active Item.
+      headers:
+        Accept-Patch:
+          $ref: ../components/headers/accept_patch.yaml
+        X-Request-ID:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/item.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '404':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml
+
+patch:
+  operationId: PatchItem
+  summary: Update mutable Item context
+  description: |
+    Applies one JSON Merge Patch atomically. Unknown or immutable members are
+    rejected. Repeating a patch that makes no state change does not update
+    UpdatedAt, KeptAt, or LaterAt.
+  tags:
+    - Items
+  security:
+    - accessCookie: []
+      csrfHeader: []
+  requestBody:
+    required: true
+    content:
+      application/merge-patch+json:
+        schema:
+          $ref: ../components/schemas/item_patch.yaml
+  responses:
+    '200':
+      description: Updated current Item.
+      headers:
+        Accept-Patch:
+          $ref: ../components/headers/accept_patch.yaml
+        X-Request-ID:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/item.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '404':
+      $ref: ../components/responses/problem.yaml
+    '413':
+      $ref: ../components/responses/problem.yaml
+    '415':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml
+
+delete:
+  operationId: DeleteItem
+  summary: Delete an Item completely
+  description: |
+    Immediately removes the Item from normal user surfaces. Repeating DELETE
+    after the Item is absent returns ITEM_NOT_FOUND.
+  tags:
+    - Items
+  security:
+    - accessCookie: []
+      csrfHeader: []
+  responses:
+    '204':
+      description: Item deleted.
+      headers:
+        X-Request-ID:
+          $ref: ../components/headers/x_request_id.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '404':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

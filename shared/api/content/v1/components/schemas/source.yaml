@@ -1,0 +1,8 @@
+oneOf:
+  - $ref: ./url_source.yaml
+  - $ref: ./text_source.yaml
+discriminator:
+  propertyName: type
+  mapping:
+    url: ./url_source.yaml
+    text: ./text_source.yaml

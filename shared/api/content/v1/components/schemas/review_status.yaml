@@ -1,0 +1,6 @@
+type: string
+enum:
+  - none
+  - later
+  - done
+description: Current user review state for the Item.

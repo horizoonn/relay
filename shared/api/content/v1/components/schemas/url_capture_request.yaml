@@ -1,0 +1,31 @@
+type: object
+additionalProperties: false
+required:
+  - source_type
+  - url
+properties:
+  source_type:
+    type: string
+    enum:
+      - url
+  url:
+    type: string
+    format: uri
+    minLength: 1
+    maxLength: 8192
+    x-relay-max-utf8-bytes: 8192
+    description: |
+      Exact OriginalURL to preserve as Source. Only absolute HTTP and HTTPS URLs
+      without userinfo are accepted. The authoritative limit is 8192 UTF-8 bytes.
+  keep:
+    type: boolean
+    default: false
+    description: Additively enter Keep when true. False has the same Capture meaning as omission.
+  later:
+    type: boolean
+    default: false
+    description: Additively enter ReviewStatus=later when true. False has the same Capture meaning as omission.
+example:
+  source_type: url
+  url: https://example.com/postgresql-mvcc
+  keep: true

@@ -1,0 +1,31 @@
+get:
+  operationId: ListLaterItems
+  summary: List Items currently marked Later
+  description: Ordered by LaterAt descending, then Item ID descending.
+  tags:
+    - Collections
+  parameters:
+    - $ref: ../components/parameters/limit.yaml
+    - $ref: ../components/parameters/cursor.yaml
+  responses:
+    '200':
+      description: Page of active Items with ReviewStatus=later.
+      headers:
+        X-Request-ID:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/item_page.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

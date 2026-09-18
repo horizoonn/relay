@@ -1,0 +1,6 @@
+description: Patch media type supported by the Item resource.
+required: true
+schema:
+  type: string
+  enum:
+    - application/merge-patch+json

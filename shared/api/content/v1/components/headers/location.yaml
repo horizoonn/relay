@@ -1,0 +1,5 @@
+description: Canonical URI of the newly created Item.
+required: true
+schema:
+  type: string
+  example: /api/v1/items/018f3f54-7c9d-7e3a-8a5b-32fc7b0db4aa

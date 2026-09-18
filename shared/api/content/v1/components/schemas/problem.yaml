@@ -1,0 +1,52 @@
+type: object
+additionalProperties: false
+required:
+  - type
+  - title
+  - status
+  - code
+  - detail
+  - request_id
+properties:
+  type:
+    type: string
+    format: uri
+    description: Stable canonical problem identity.
+    example: urn:relay:problem:invalid-request
+  title:
+    type: string
+    minLength: 1
+    maxLength: 128
+  status:
+    type: integer
+    minimum: 400
+    maximum: 599
+  code:
+    type: string
+    enum:
+      - INVALID_REQUEST
+      - UNAUTHENTICATED
+      - ITEM_NOT_FOUND
+      - ROUTE_NOT_FOUND
+      - METHOD_NOT_ALLOWED
+      - IDEMPOTENCY_KEY_REUSED
+      - PAYLOAD_TOO_LARGE
+      - UNSUPPORTED_MEDIA_TYPE
+      - TOO_MANY_REQUESTS
+      - INTERNAL_ERROR
+      - SERVICE_UNAVAILABLE
+  detail:
+    type: string
+    minLength: 1
+    maxLength: 1024
+    description: Human-readable diagnostic text; not a stable client contract.
+  request_id:
+    type: string
+    minLength: 1
+    maxLength: 128
+    description: Equal to the response X-Request-ID header.
+  violations:
+    type: array
+    maxItems: 100
+    items:
+      $ref: ./violation.yaml

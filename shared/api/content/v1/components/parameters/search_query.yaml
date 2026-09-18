@@ -1,0 +1,10 @@
+name: q
+in: query
+required: true
+description: |
+  Search query after Unicode-whitespace trim. One- and two-code-point queries
+  search DisplayTitle exact/prefix only; longer queries also search Text and URL.
+schema:
+  type: string
+  minLength: 1
+  maxLength: 256

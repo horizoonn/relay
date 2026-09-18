@@ -1,0 +1,15 @@
+type: object
+additionalProperties: false
+required:
+  - item_id
+  - outcome
+properties:
+  item_id:
+    $ref: ./item_id.yaml
+  outcome:
+    type: string
+    enum:
+      - reused
+example:
+  item_id: 018f3f54-7c9d-7e3a-8a5b-32fc7b0db4aa
+  outcome: reused

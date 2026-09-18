@@ -1,0 +1,8 @@
+oneOf:
+  - $ref: ./url_capture_request.yaml
+  - $ref: ./text_capture_request.yaml
+discriminator:
+  propertyName: source_type
+  mapping:
+    url: ./url_capture_request.yaml
+    text: ./text_capture_request.yaml

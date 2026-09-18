@@ -1,0 +1,8 @@
+name: cursor
+in: query
+required: false
+description: Opaque, integrity-protected, read-model-bound continuation cursor.
+schema:
+  type: string
+  minLength: 1
+  maxLength: 2048

@@ -1,0 +1,6 @@
+description: Correlation identifier assigned to the request.
+required: true
+schema:
+  type: string
+  minLength: 1
+  maxLength: 128

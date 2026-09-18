@@ -1,0 +1,10 @@
+description: Request failed. The HTTP status and stable Relay code identify the failure.
+headers:
+  X-Request-ID:
+    $ref: ../headers/x_request_id.yaml
+  Retry-After:
+    $ref: ../headers/retry_after.yaml
+content:
+  application/problem+json:
+    schema:
+      $ref: ../schemas/problem.yaml

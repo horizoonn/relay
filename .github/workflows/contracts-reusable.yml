@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   contracts:
-    name: Protobuf contracts
+    name: Contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -24,16 +24,26 @@ jobs:
           go-version-file: go.work
           cache-dependency-path: '**/go.sum'
 
+      - name: Set up Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 20
+          cache: npm
+
       - name: Set up Task
         uses: arduino/setup-task@v3.0.0
 
-      - name: Lint protobuf
-        run: task proto:lint
+      - name: Lint contracts
+        run: task contracts:lint
 
-      - name: Generate protobuf
-        run: task proto:generate
+      - name: Generate contracts
+        run: task generate
 
-      - name: Check generated code
+      - name: Compile generated OpenAPI code
+        working-directory: shared
+        run: GOWORK=off go test ./...
+
+      - name: Check bundled contracts
         run: |
           git diff --exit-code
           test -z "$(git status --porcelain)"

@@ -1,0 +1,6 @@
+type: string
+x-ogen-name: ItemSourceType
+enum:
+  - url
+  - text
+description: Immutable Item source kind.

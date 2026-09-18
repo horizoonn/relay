@@ -1,0 +1,796 @@
+openapi: 3.0.3
+info:
+  title: Relay Content API
+  version: 1.0.0
+  description: |
+    Public HTTP contract for Relay Content Stage 1.
+
+    The API captures URL and text sources, exposes Item user context, and provides
+    Recent, Library, Later, and Search read surfaces. The authenticated owner is
+    derived from Identity and is never supplied by the client.
+servers:
+  - url: /
+security:
+  - accessCookie: []
+tags:
+  - name: Capture
+    description: Capture immutable URL or text sources.
+  - name: Items
+    description: Read, update, and delete owner-scoped Items.
+  - name: Collections
+    description: Read owner-scoped Recent, Library, Later, and Search views.
+paths:
+  /api/v1/items:
+    post:
+      operationId: CaptureItem
+      summary: Capture a URL or text source as an Item
+      description: |
+        Creates a new Item or reuses an active owner-scoped URL Item. Capture is the
+        use case; Item is the resource. Idempotent replay returns the original
+        status, body, and Location header and does not update LastCapturedAt again.
+      tags:
+        - Capture
+      security:
+        - accessCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/idempotency_key'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/capture_request'
+      responses:
+        '200':
+          description: An active owner-scoped URL Item was reused.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/reused_capture_receipt'
+        '201':
+          description: A new Item was created.
+          headers:
+            Location:
+              $ref: '#/components/headers/location'
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/created_capture_receipt'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '409':
+          $ref: '#/components/responses/problem'
+        '413':
+          $ref: '#/components/responses/problem'
+        '415':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/items/recent:
+    get:
+      operationId: ListRecentItems
+      summary: List recently captured Items
+      description: Ordered by LastCapturedAt descending, then Item ID descending.
+      tags:
+        - Collections
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Page of active Items ordered by most recent Capture.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/item_page'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/items/library:
+    get:
+      operationId: ListLibraryItems
+      summary: List Items currently kept in Library
+      description: Ordered by KeptAt descending, then Item ID descending.
+      tags:
+        - Collections
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Page of active Items with Keep=true.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/item_page'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/items/later:
+    get:
+      operationId: ListLaterItems
+      summary: List Items currently marked Later
+      description: Ordered by LaterAt descending, then Item ID descending.
+      tags:
+        - Collections
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Page of active Items with ReviewStatus=later.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/item_page'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/items/search:
+    get:
+      operationId: SearchItems
+      summary: Search active Items
+      description: |
+        Search is case-insensitive. One- and two-code-point queries search
+        DisplayTitle exact/prefix only. Longer queries use deterministic field and
+        match tiers defined by the Stage 1 API design baseline.
+      tags:
+        - Collections
+      parameters:
+        - $ref: '#/components/parameters/search_query'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Page of matching active Items.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/item_page'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/items/{item_id}:
+    parameters:
+      - $ref: '#/components/parameters/item_id'
+    get:
+      operationId: GetItem
+      summary: Get an Item
+      description: Missing, foreign, and deleted Items all return ITEM_NOT_FOUND.
+      tags:
+        - Items
+      responses:
+        '200':
+          description: Current active Item.
+          headers:
+            Accept-Patch:
+              $ref: '#/components/headers/accept_patch'
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/item'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '404':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+    patch:
+      operationId: PatchItem
+      summary: Update mutable Item context
+      description: |
+        Applies one JSON Merge Patch atomically. Unknown or immutable members are
+        rejected. Repeating a patch that makes no state change does not update
+        UpdatedAt, KeptAt, or LaterAt.
+      tags:
+        - Items
+      security:
+        - accessCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/item_patch'
+      responses:
+        '200':
+          description: Updated current Item.
+          headers:
+            Accept-Patch:
+              $ref: '#/components/headers/accept_patch'
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/item'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '404':
+          $ref: '#/components/responses/problem'
+        '413':
+          $ref: '#/components/responses/problem'
+        '415':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+    delete:
+      operationId: DeleteItem
+      summary: Delete an Item completely
+      description: |
+        Immediately removes the Item from normal user surfaces. Repeating DELETE
+        after the Item is absent returns ITEM_NOT_FOUND.
+      tags:
+        - Items
+      security:
+        - accessCookie: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Item deleted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/x_request_id'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '404':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+components:
+  securitySchemes:
+    accessCookie:
+      type: apiKey
+      in: cookie
+      name: relay_access_token
+      description: Secure, HttpOnly, SameSite opaque access-token cookie issued by Identity.
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: CSRF token required together with the access cookie for state-changing requests.
+  parameters:
+    idempotency_key:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Client-generated key for Capture retry safety. It is scoped by authenticated
+        owner and operation and retained for seven days.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: ^[\x20-\x7E]+$
+    limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of Items to return. Invalid values are rejected, not clamped.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque, integrity-protected, read-model-bound continuation cursor.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+    search_query:
+      name: q
+      in: query
+      required: true
+      description: |
+        Search query after Unicode-whitespace trim. One- and two-code-point queries
+        search DisplayTitle exact/prefix only; longer queries also search Text and URL.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+    item_id:
+      name: item_id
+      in: path
+      required: true
+      description: Item identifier. Missing, foreign, and deleted Items are indistinguishable.
+      schema:
+        $ref: '#/components/schemas/item_id'
+  schemas:
+    url_capture_request:
+      type: object
+      additionalProperties: false
+      required:
+        - source_type
+        - url
+      properties:
+        source_type:
+          type: string
+          enum:
+            - url
+        url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 8192
+          x-relay-max-utf8-bytes: 8192
+          description: |
+            Exact OriginalURL to preserve as Source. Only absolute HTTP and HTTPS URLs
+            without userinfo are accepted. The authoritative limit is 8192 UTF-8 bytes.
+        keep:
+          type: boolean
+          default: false
+          description: Additively enter Keep when true. False has the same Capture meaning as omission.
+        later:
+          type: boolean
+          default: false
+          description: Additively enter ReviewStatus=later when true. False has the same Capture meaning as omission.
+      example:
+        source_type: url
+        url: https://example.com/postgresql-mvcc
+        keep: true
+    text_capture_request:
+      type: object
+      additionalProperties: false
+      required:
+        - source_type
+        - text
+      properties:
+        source_type:
+          type: string
+          enum:
+            - text
+        text:
+          type: string
+          minLength: 1
+          maxLength: 65536
+          x-relay-max-utf8-bytes: 65536
+          description: |
+            Exact UTF-8 text to preserve as Source. Whitespace-only text is rejected.
+            The authoritative limit is 65536 UTF-8 bytes; accepted text is not trimmed.
+        keep:
+          type: boolean
+          default: false
+          description: Additively enter Keep when true. False has the same Capture meaning as omission.
+        later:
+          type: boolean
+          default: false
+          description: Additively enter ReviewStatus=later when true. False has the same Capture meaning as omission.
+      example:
+        source_type: text
+        text: PostgreSQL uses MVCC for transaction isolation.
+        later: true
+    capture_request:
+      oneOf:
+        - $ref: '#/components/schemas/url_capture_request'
+        - $ref: '#/components/schemas/text_capture_request'
+      discriminator:
+        propertyName: source_type
+        mapping:
+          url: '#/components/schemas/url_capture_request'
+          text: '#/components/schemas/text_capture_request'
+    violation:
+      type: object
+      additionalProperties: false
+      required:
+        - pointer
+        - code
+        - message
+      properties:
+        pointer:
+          type: string
+          description: JSON Pointer to the invalid request member; empty for a document-level violation.
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[A-Z][A-Z0-9_]*$
+        message:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: Human-readable diagnostic text; not a stable client contract.
+    problem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - status
+        - code
+        - detail
+        - request_id
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Stable canonical problem identity.
+          example: urn:relay:problem:invalid-request
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type: string
+          enum:
+            - INVALID_REQUEST
+            - UNAUTHENTICATED
+            - ITEM_NOT_FOUND
+            - ROUTE_NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - IDEMPOTENCY_KEY_REUSED
+            - PAYLOAD_TOO_LARGE
+            - UNSUPPORTED_MEDIA_TYPE
+            - TOO_MANY_REQUESTS
+            - INTERNAL_ERROR
+            - SERVICE_UNAVAILABLE
+        detail:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: Human-readable diagnostic text; not a stable client contract.
+        request_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Equal to the response X-Request-ID header.
+        violations:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/violation'
+    item_id:
+      type: string
+      format: uuid
+      description: Stable Relay Item identifier.
+      example: 018f3f54-7c9d-7e3a-8a5b-32fc7b0db4aa
+    reused_capture_receipt:
+      type: object
+      additionalProperties: false
+      required:
+        - item_id
+        - outcome
+      properties:
+        item_id:
+          $ref: '#/components/schemas/item_id'
+        outcome:
+          type: string
+          enum:
+            - reused
+      example:
+        item_id: 018f3f54-7c9d-7e3a-8a5b-32fc7b0db4aa
+        outcome: reused
+    created_capture_receipt:
+      type: object
+      additionalProperties: false
+      required:
+        - item_id
+        - outcome
+      properties:
+        item_id:
+          $ref: '#/components/schemas/item_id'
+        outcome:
+          type: string
+          enum:
+            - created
+      example:
+        item_id: 018f3f54-7c9d-7e3a-8a5b-32fc7b0db4aa
+        outcome: created
+    source_type:
+      type: string
+      x-ogen-name: ItemSourceType
+      enum:
+        - url
+        - text
+      description: Immutable Item source kind.
+    review_status:
+      type: string
+      enum:
+        - none
+        - later
+        - done
+      description: Current user review state for the Item.
+    item_summary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - source_type
+        - preview
+        - preview_truncated
+        - keep
+        - review_status
+        - created_at
+        - updated_at
+        - last_captured_at
+      properties:
+        id:
+          $ref: '#/components/schemas/item_id'
+        source_type:
+          $ref: '#/components/schemas/source_type'
+        display_title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: User title override. Omitted when absent.
+        preview:
+          type: string
+          maxLength: 512
+          description: First 512 Unicode code points of the original Text or OriginalURL.
+        preview_truncated:
+          type: boolean
+          description: True when the source display string contains more than 512 Unicode code points.
+        keep:
+          type: boolean
+        review_status:
+          $ref: '#/components/schemas/review_status'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_captured_at:
+          type: string
+          format: date-time
+    item_page:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/item_summary'
+        next_cursor:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          description: Opaque continuation cursor. Omitted when there is no next page.
+    url_source:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - url
+      properties:
+        type:
+          type: string
+          enum:
+            - url
+        url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 8192
+          x-relay-max-utf8-bytes: 8192
+          description: Exact immutable OriginalURL supplied by the user.
+    text_source:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - text
+      properties:
+        type:
+          type: string
+          enum:
+            - text
+        text:
+          type: string
+          minLength: 1
+          maxLength: 65536
+          x-relay-max-utf8-bytes: 65536
+          description: Exact immutable UTF-8 text supplied by the user.
+    source:
+      oneOf:
+        - $ref: '#/components/schemas/url_source'
+        - $ref: '#/components/schemas/text_source'
+      discriminator:
+        propertyName: type
+        mapping:
+          url: '#/components/schemas/url_source'
+          text: '#/components/schemas/text_source'
+    item:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - source
+        - keep
+        - review_status
+        - created_at
+        - updated_at
+        - last_captured_at
+      properties:
+        id:
+          $ref: '#/components/schemas/item_id'
+        source:
+          $ref: '#/components/schemas/source'
+        display_title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: User title override. Omitted when no override exists; whitespace-only values are invalid.
+        keep:
+          type: boolean
+        review_status:
+          $ref: '#/components/schemas/review_status'
+        created_at:
+          type: string
+          format: date-time
+          description: Time of the first Capture.
+        updated_at:
+          type: string
+          format: date-time
+          description: Time of the last persisted mutable-state change.
+        last_captured_at:
+          type: string
+          format: date-time
+          description: Time of the most recent Capture interaction for this Item.
+      example:
+        id: 018f3f54-7c9d-7e3a-8a5b-32fc7b0db4aa
+        source:
+          type: url
+          url: https://example.com/postgresql-mvcc
+        display_title: PostgreSQL MVCC
+        keep: true
+        review_status: later
+        created_at: '2026-09-18T10:15:30Z'
+        updated_at: '2026-09-18T10:20:00Z'
+        last_captured_at: '2026-09-18T10:15:30Z'
+    item_patch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        keep:
+          type: boolean
+          description: Set Keep. Null is invalid.
+        review_status:
+          $ref: '#/components/schemas/review_status'
+        display_title:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 256
+          description: Set a non-whitespace user title, or null to clear the override.
+  headers:
+    x_request_id:
+      description: Correlation identifier assigned to the request.
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    retry_after:
+      description: Delay before retrying, expressed as HTTP-date or seconds when applicable.
+      schema:
+        type: string
+    location:
+      description: Canonical URI of the newly created Item.
+      required: true
+      schema:
+        type: string
+        example: /api/v1/items/018f3f54-7c9d-7e3a-8a5b-32fc7b0db4aa
+    accept_patch:
+      description: Patch media type supported by the Item resource.
+      required: true
+      schema:
+        type: string
+        enum:
+          - application/merge-patch+json
+  responses:
+    problem:
+      description: Request failed. The HTTP status and stable Relay code identify the failure.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/x_request_id'
+        Retry-After:
+          $ref: '#/components/headers/retry_after'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/problem'
+x-ogen:
+  target: ./shared/pkg/openapi/content/v1
+  package: content_v1
+  clean: true

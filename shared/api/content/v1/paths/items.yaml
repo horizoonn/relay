@@ -1,0 +1,59 @@
+post:
+  operationId: CaptureItem
+  summary: Capture a URL or text source as an Item
+  description: |
+    Creates a new Item or reuses an active owner-scoped URL Item. Capture is the
+    use case; Item is the resource. Idempotent replay returns the original
+    status, body, and Location header and does not update LastCapturedAt again.
+  tags:
+    - Capture
+  security:
+    - accessCookie: []
+      csrfHeader: []
+  parameters:
+    - $ref: ../components/parameters/idempotency_key.yaml
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../components/schemas/capture_request.yaml
+  responses:
+    '201':
+      description: A new Item was created.
+      headers:
+        Location:
+          $ref: ../components/headers/location.yaml
+        X-Request-ID:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/created_capture_receipt.yaml
+    '200':
+      description: An active owner-scoped URL Item was reused.
+      headers:
+        X-Request-ID:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/reused_capture_receipt.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '409':
+      $ref: ../components/responses/problem.yaml
+    '413':
+      $ref: ../components/responses/problem.yaml
+    '415':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml
