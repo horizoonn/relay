@@ -18,6 +18,7 @@ ensure_service_database() {
   local app_password="${!app_password_var:?${app_password_var} is required}"
   local migrator_user="${!migrator_user_var:?${migrator_user_var} is required}"
   local migrator_password="${!migrator_password_var:?${migrator_password_var} is required}"
+  local service_schema="$service"
 
   psql --dbname=postgres --set=ON_ERROR_STOP=1 \
     --set=app_user="$app_user" \
@@ -43,10 +44,15 @@ SQL
 
   psql --dbname="$database" --set=ON_ERROR_STOP=1 \
     --set=app_user="$app_user" \
-    --set=migrator_user="$migrator_user" <<'SQL'
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-ALTER SCHEMA public OWNER TO :"migrator_user";
-GRANT USAGE ON SCHEMA public TO :"app_user";
+    --set=migrator_user="$migrator_user" \
+    --set=database="$database" \
+    --set=service_schema="$service_schema" <<'SQL'
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+
+SELECT format('CREATE SCHEMA IF NOT EXISTS %I AUTHORIZATION %I', :'service_schema', :'migrator_user') \gexec
+SELECT format('ALTER SCHEMA %I OWNER TO %I', :'service_schema', :'migrator_user') \gexec
+REVOKE ALL ON SCHEMA :"service_schema" FROM PUBLIC;
+GRANT USAGE ON SCHEMA :"service_schema" TO :"app_user";
 
 SELECT format('CREATE SCHEMA IF NOT EXISTS goose AUTHORIZATION %I', :'migrator_user') \gexec
 ALTER SCHEMA goose OWNER TO :"migrator_user";
@@ -54,23 +60,32 @@ REVOKE ALL ON SCHEMA goose FROM PUBLIC;
 REVOKE ALL ON SCHEMA goose FROM :"app_user";
 
 GRANT SELECT, INSERT, UPDATE, DELETE
-ON ALL TABLES IN SCHEMA public
+ON ALL TABLES IN SCHEMA :"service_schema"
 TO :"app_user";
 GRANT USAGE, SELECT
-ON ALL SEQUENCES IN SCHEMA public
+ON ALL SEQUENCES IN SCHEMA :"service_schema"
 TO :"app_user";
 
 ALTER DEFAULT PRIVILEGES
 FOR ROLE :"migrator_user"
-IN SCHEMA public
+IN SCHEMA :"service_schema"
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_user";
 ALTER DEFAULT PRIVILEGES
 FOR ROLE :"migrator_user"
-IN SCHEMA public
+IN SCHEMA :"service_schema"
 GRANT USAGE, SELECT ON SEQUENCES TO :"app_user";
+
+SELECT format(
+  'ALTER ROLE %I IN DATABASE %I SET search_path = pg_catalog, %I',
+  :'app_user', :'database', :'service_schema'
+) \gexec
+SELECT format(
+  'ALTER ROLE %I IN DATABASE %I SET search_path = pg_catalog, %I',
+  :'migrator_user', :'database', :'service_schema'
+) \gexec
 SQL
 
-  printf 'Database and roles are ready for %s\n' "$service"
+  printf 'Database, roles, and schema are ready for %s\n' "$service"
 }
 
 for service in content delivery identity processing; do
