@@ -1,4 +1,39 @@
 services:
+  content:
+    build:
+      context: ../../..
+      dockerfile: content/Dockerfile
+      target: runtime
+    environment:
+      CONTENT_HTTP_ADDR: ":8080"
+      CONTENT_ALLOWED_ORIGIN: ${CONTENT_ALLOWED_ORIGIN}
+      CONTENT_CURSOR_SIGNING_KEY: ${CONTENT_CURSOR_SIGNING_KEY}
+      CONTENT_SHUTDOWN_TIMEOUT: ${CONTENT_SHUTDOWN_TIMEOUT}
+      CONTENT_DB_HOST: postgres
+      CONTENT_DB_PORT: "5432"
+      CONTENT_DB: ${CONTENT_DB}
+      CONTENT_APP_USER: ${CONTENT_APP_USER}
+      CONTENT_APP_PASSWORD: ${CONTENT_APP_PASSWORD}
+      CONTENT_DB_SSLMODE: ${CONTENT_DB_SSLMODE}
+      CONTENT_DB_MAX_CONNS: ${CONTENT_DB_MAX_CONNS}
+      CONTENT_DB_MIN_CONNS: ${CONTENT_DB_MIN_CONNS}
+      CONTENT_DB_CONNECT_TIMEOUT: ${CONTENT_DB_CONNECT_TIMEOUT}
+      CONTENT_IDENTITY_ADDR: ${CONTENT_IDENTITY_ADDR}
+      CONTENT_IDENTITY_SERVICE_TOKEN: ${CONTENT_IDENTITY_SERVICE_TOKEN}
+      CONTENT_IDENTITY_CA_FILE: ${CONTENT_IDENTITY_CA_FILE}
+      CONTENT_IDENTITY_SERVER_NAME: ${CONTENT_IDENTITY_SERVER_NAME}
+      CONTENT_IDENTITY_TIMEOUT: ${CONTENT_IDENTITY_TIMEOUT}
+    ports:
+      - "${CONTENT_HTTP_BIND_HOST:-127.0.0.1}:${CONTENT_HTTP_PORT:-8080}:8080"
+    volumes:
+      - ../../certs:/certs:ro
+    depends_on:
+      content-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - relay-net
+
   content-migrate:
     build:
       context: ../../..

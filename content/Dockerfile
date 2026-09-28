@@ -35,6 +35,11 @@ COPY content ./content
 COPY platform ./platform
 COPY shared ./shared
 
+RUN cd shared && GOWORK=off go run github.com/ogen-go/ogen/cmd/ogen \
+    --target ./pkg/openapi/content/v1 \
+    --package content_v1 \
+    --clean ./api/bundles/content.openapi.v1.bundle.yaml
+
 ARG TARGETOS=linux
 ARG TARGETARCH
 RUN cd content \
