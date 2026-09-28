@@ -23,11 +23,15 @@ verify_service() {
 
   if PGUSER="$app_user" PGPASSWORD="$app_password" \
     psql --dbname="$database" --set=ON_ERROR_STOP=1 \
-      --set=service_schema="$service_schema" \
-      --command='CREATE TABLE :"service_schema"._relay_app_ddl_probe (id integer)' >/dev/null 2>&1; then
+      --set=service_schema="$service_schema" >/dev/null 2>&1 <<'SQL'
+CREATE TABLE :"service_schema"._relay_app_ddl_probe (id integer);
+SQL
+  then
     PGUSER="$app_user" PGPASSWORD="$app_password" \
       psql --dbname="$database" --set=service_schema="$service_schema" \
-        --command='DROP TABLE :"service_schema"._relay_app_ddl_probe' >/dev/null 2>&1 || true
+        >/dev/null 2>&1 <<'SQL' || true
+DROP TABLE :"service_schema"._relay_app_ddl_probe;
+SQL
     printf 'Application role %s unexpectedly has DDL privileges in %s.%s\n' \
       "$app_user" "$database" "$service_schema" >&2
     exit 1
@@ -45,13 +49,18 @@ SQL
 
   PGUSER="$app_user" PGPASSWORD="$app_password" \
     psql --dbname="$database" --set=ON_ERROR_STOP=1 \
-      --set=service_schema="$service_schema" \
-      --command="INSERT INTO :\"service_schema\"._relay_dml_probe DEFAULT VALUES; SELECT id, value FROM :\"service_schema\"._relay_dml_probe; UPDATE :\"service_schema\"._relay_dml_probe SET value = 'verified'; DELETE FROM :\"service_schema\"._relay_dml_probe;" >/dev/null
+      --set=service_schema="$service_schema" --single-transaction --file=- >/dev/null <<'SQL'
+INSERT INTO :"service_schema"._relay_dml_probe DEFAULT VALUES;
+SELECT id, value FROM :"service_schema"._relay_dml_probe;
+UPDATE :"service_schema"._relay_dml_probe SET value = 'verified';
+DELETE FROM :"service_schema"._relay_dml_probe;
+SQL
 
   PGUSER="$migrator_user" PGPASSWORD="$migrator_password" \
     psql --dbname="$database" --set=ON_ERROR_STOP=1 \
-      --set=service_schema="$service_schema" \
-      --command='DROP TABLE :"service_schema"._relay_dml_probe' >/dev/null
+      --set=service_schema="$service_schema" >/dev/null <<'SQL'
+DROP TABLE :"service_schema"._relay_dml_probe;
+SQL
 
   PGUSER="$migrator_user" PGPASSWORD="$migrator_password" \
     psql --dbname="$database" --set=ON_ERROR_STOP=1 >/dev/null <<'SQL'
