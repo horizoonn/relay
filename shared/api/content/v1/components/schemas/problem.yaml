@@ -26,6 +26,7 @@ properties:
     enum:
       - INVALID_REQUEST
       - UNAUTHENTICATED
+      - FORBIDDEN
       - ITEM_NOT_FOUND
       - ROUTE_NOT_FOUND
       - METHOD_NOT_ALLOWED
@@ -44,7 +45,7 @@ properties:
     type: string
     minLength: 1
     maxLength: 128
-    description: Equal to the response X-Request-ID header.
+    description: Equal to the response X-Request-Id header.
   violations:
     type: array
     maxItems: 100

@@ -53,5 +53,5 @@ components:
     csrfHeader:
       type: apiKey
       in: header
-      name: X-CSRF-Token
+      name: X-Csrf-Token
       description: CSRF token required together with the access cookie for state-changing requests.

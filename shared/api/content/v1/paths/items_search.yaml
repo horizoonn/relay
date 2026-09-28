@@ -15,7 +15,7 @@ get:
     '200':
       description: Page of matching active Items.
       headers:
-        X-Request-ID:
+        X-Request-Id:
           $ref: ../components/headers/x_request_id.yaml
       content:
         application/json:

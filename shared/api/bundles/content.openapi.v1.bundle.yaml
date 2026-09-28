@@ -45,7 +45,7 @@ paths:
         '200':
           description: An active owner-scoped URL Item was reused.
           headers:
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
           content:
             application/json:
@@ -56,7 +56,7 @@ paths:
           headers:
             Location:
               $ref: '#/components/headers/location'
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
           content:
             application/json:
@@ -65,6 +65,8 @@ paths:
         '400':
           $ref: '#/components/responses/problem'
         '401':
+          $ref: '#/components/responses/problem'
+        '403':
           $ref: '#/components/responses/problem'
         '409':
           $ref: '#/components/responses/problem'
@@ -94,7 +96,7 @@ paths:
         '200':
           description: Page of active Items ordered by most recent Capture.
           headers:
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
           content:
             application/json:
@@ -126,7 +128,7 @@ paths:
         '200':
           description: Page of active Items with Keep=true.
           headers:
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
           content:
             application/json:
@@ -158,7 +160,7 @@ paths:
         '200':
           description: Page of active Items with ReviewStatus=later.
           headers:
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
           content:
             application/json:
@@ -194,7 +196,7 @@ paths:
         '200':
           description: Page of matching active Items.
           headers:
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
           content:
             application/json:
@@ -227,7 +229,7 @@ paths:
           headers:
             Accept-Patch:
               $ref: '#/components/headers/accept_patch'
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
           content:
             application/json:
@@ -271,7 +273,7 @@ paths:
           headers:
             Accept-Patch:
               $ref: '#/components/headers/accept_patch'
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
           content:
             application/json:
@@ -280,6 +282,8 @@ paths:
         '400':
           $ref: '#/components/responses/problem'
         '401':
+          $ref: '#/components/responses/problem'
+        '403':
           $ref: '#/components/responses/problem'
         '404':
           $ref: '#/components/responses/problem'
@@ -310,11 +314,13 @@ paths:
         '204':
           description: Item deleted.
           headers:
-            X-Request-ID:
+            X-Request-Id:
               $ref: '#/components/headers/x_request_id'
         '400':
           $ref: '#/components/responses/problem'
         '401':
+          $ref: '#/components/responses/problem'
+        '403':
           $ref: '#/components/responses/problem'
         '404':
           $ref: '#/components/responses/problem'
@@ -336,7 +342,7 @@ components:
     csrfHeader:
       type: apiKey
       in: header
-      name: X-CSRF-Token
+      name: X-Csrf-Token
       description: CSRF token required together with the access cookie for state-changing requests.
   parameters:
     idempotency_key:
@@ -402,7 +408,6 @@ components:
             - url
         url:
           type: string
-          format: uri
           minLength: 1
           maxLength: 8192
           x-relay-max-utf8-bytes: 8192
@@ -511,6 +516,7 @@ components:
           enum:
             - INVALID_REQUEST
             - UNAUTHENTICATED
+            - FORBIDDEN
             - ITEM_NOT_FOUND
             - ROUTE_NOT_FOUND
             - METHOD_NOT_ALLOWED
@@ -529,7 +535,7 @@ components:
           type: string
           minLength: 1
           maxLength: 128
-          description: Equal to the response X-Request-ID header.
+          description: Equal to the response X-Request-Id header.
         violations:
           type: array
           maxItems: 100
@@ -658,7 +664,6 @@ components:
             - url
         url:
           type: string
-          format: uri
           minLength: 1
           maxLength: 8192
           x-relay-max-utf8-bytes: 8192
@@ -782,7 +787,7 @@ components:
     problem:
       description: Request failed. The HTTP status and stable Relay code identify the failure.
       headers:
-        X-Request-ID:
+        X-Request-Id:
           $ref: '#/components/headers/x_request_id'
         Retry-After:
           $ref: '#/components/headers/retry_after'

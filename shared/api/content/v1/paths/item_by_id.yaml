@@ -13,7 +13,7 @@ get:
       headers:
         Accept-Patch:
           $ref: ../components/headers/accept_patch.yaml
-        X-Request-ID:
+        X-Request-Id:
           $ref: ../components/headers/x_request_id.yaml
       content:
         application/json:
@@ -58,7 +58,7 @@ patch:
       headers:
         Accept-Patch:
           $ref: ../components/headers/accept_patch.yaml
-        X-Request-ID:
+        X-Request-Id:
           $ref: ../components/headers/x_request_id.yaml
       content:
         application/json:
@@ -67,6 +67,8 @@ patch:
     '400':
       $ref: ../components/responses/problem.yaml
     '401':
+      $ref: ../components/responses/problem.yaml
+    '403':
       $ref: ../components/responses/problem.yaml
     '404':
       $ref: ../components/responses/problem.yaml
@@ -98,11 +100,13 @@ delete:
     '204':
       description: Item deleted.
       headers:
-        X-Request-ID:
+        X-Request-Id:
           $ref: ../components/headers/x_request_id.yaml
     '400':
       $ref: ../components/responses/problem.yaml
     '401':
+      $ref: ../components/responses/problem.yaml
+    '403':
       $ref: ../components/responses/problem.yaml
     '404':
       $ref: ../components/responses/problem.yaml

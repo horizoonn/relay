@@ -11,7 +11,7 @@ get:
     '200':
       description: Page of active Items with ReviewStatus=later.
       headers:
-        X-Request-ID:
+        X-Request-Id:
           $ref: ../components/headers/x_request_id.yaml
       content:
         application/json:

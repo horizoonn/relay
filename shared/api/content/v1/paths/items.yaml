@@ -24,7 +24,7 @@ post:
       headers:
         Location:
           $ref: ../components/headers/location.yaml
-        X-Request-ID:
+        X-Request-Id:
           $ref: ../components/headers/x_request_id.yaml
       content:
         application/json:
@@ -33,7 +33,7 @@ post:
     '200':
       description: An active owner-scoped URL Item was reused.
       headers:
-        X-Request-ID:
+        X-Request-Id:
           $ref: ../components/headers/x_request_id.yaml
       content:
         application/json:
@@ -42,6 +42,8 @@ post:
     '400':
       $ref: ../components/responses/problem.yaml
     '401':
+      $ref: ../components/responses/problem.yaml
+    '403':
       $ref: ../components/responses/problem.yaml
     '409':
       $ref: ../components/responses/problem.yaml
