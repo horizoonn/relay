@@ -4,18 +4,23 @@ CREATE TABLE content.idempotency_records (
     owner_id            UUID        NOT NULL,
     operation           TEXT        NOT NULL,
     idempotency_key     TEXT        NOT NULL,
+    fingerprint_version SMALLINT    NOT NULL,
     request_fingerprint BYTEA       NOT NULL,
 
     item_id             UUID,
     outcome             TEXT,
 
     created_at          TIMESTAMPTZ NOT NULL,
+    expires_at          TIMESTAMPTZ NOT NULL,
 
     CONSTRAINT idempotency_records_pkey
         PRIMARY KEY (owner_id, operation, idempotency_key),
 
     CONSTRAINT idempotency_records_fingerprint_size_chk
         CHECK (octet_length(request_fingerprint) = 32),
+
+    CONSTRAINT idempotency_records_fingerprint_version_chk
+        CHECK (fingerprint_version > 0),
 
     CONSTRAINT idempotency_records_outcome_chk
         CHECK (
@@ -31,6 +36,9 @@ CREATE TABLE content.idempotency_records (
 
 CREATE INDEX idempotency_records_created_at_idx
     ON content.idempotency_records (created_at);
+
+CREATE INDEX idempotency_records_expires_at_idx
+    ON content.idempotency_records (expires_at);
 
 -- +goose Down
 
