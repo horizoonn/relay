@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package relay.identity.v1;
+
+option go_package = "github.com/horizoonn/relay/shared/pkg/proto/relay/identity/v1;identityv1";
+
+// IdentityService validates current user sessions for trusted services.
+service IdentityService {
+  // Introspect validates an opaque access token against the current session.
+  rpc Introspect(IntrospectRequest) returns (IntrospectResponse);
+
+  // ValidateCSRF checks the CSRF token bound to an access token.
+  rpc ValidateCSRF(ValidateCSRFRequest) returns (ValidateCSRFResponse);
+}
+
+// IntrospectRequest carries an opaque user access token.
+message IntrospectRequest {
+  string access_token = 1;
+}
+
+// IntrospectResponse identifies a valid current user and session.
+message IntrospectResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string session_id = 3;
+}
+
+// ValidateCSRFRequest carries the access and CSRF tokens from a mutation.
+message ValidateCSRFRequest {
+  string access_token = 1;
+  string csrf_token = 2;
+}
+
+// ValidateCSRFResponse distinguishes a revoked session from a bad CSRF token.
+message ValidateCSRFResponse {
+  bool access_valid = 1;
+  bool csrf_valid = 2;
+}

@@ -1,0 +1,11 @@
+name: Idempotency-Key
+in: header
+required: true
+description: |
+  Client-generated key for Capture retry safety. It is scoped by authenticated
+  owner and operation and retained for seven days.
+schema:
+  type: string
+  minLength: 1
+  maxLength: 128
+  pattern: '^[\x20-\x7E]+$'

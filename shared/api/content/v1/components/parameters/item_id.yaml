@@ -1,0 +1,6 @@
+name: item_id
+in: path
+required: true
+description: Item identifier. Missing, foreign, and deleted Items are indistinguishable.
+schema:
+  $ref: ../schemas/item_id.yaml

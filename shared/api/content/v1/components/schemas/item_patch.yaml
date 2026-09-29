@@ -1,0 +1,15 @@
+type: object
+additionalProperties: false
+minProperties: 1
+properties:
+  keep:
+    type: boolean
+    description: Set Keep. Null is invalid.
+  review_status:
+    $ref: ./review_status.yaml
+  display_title:
+    type: string
+    nullable: true
+    minLength: 1
+    maxLength: 256
+    description: Set a non-whitespace user title, or null to clear the override.

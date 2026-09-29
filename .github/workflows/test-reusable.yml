@@ -41,4 +41,25 @@ jobs:
         uses: arduino/setup-task@v3.0.0
 
       - name: Validate and test Compose stack
-        run: task compose:test
+        run: task test:infra
+
+  content-postgres:
+    name: Content PostgreSQL + HTTP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Task
+        uses: arduino/setup-task@v3.0.0
+
+      - name: Run Content integration and component tests
+        run: task test:db

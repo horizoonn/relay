@@ -13,7 +13,7 @@ vars:
   YQ_VERSION: "v4.53.6"
   GRPCURL_VERSION: "v1.9.4"
   ENVSUBST_VERSION: "v1.4.3"
-  GOVULNCHECK_VERSION: "v1.1.4"
+  GOVULNCHECK_VERSION: "v1.8.0"
 
   BIN_DIR: "{{.ROOT_DIR}}/bin"
 
@@ -25,6 +25,12 @@ vars:
   GRPCURL: "{{.BIN_DIR}}/grpcurl"
   ENVSUBST: "{{.BIN_DIR}}/envsubst"
   GOVULNCHECK: "{{.BIN_DIR}}/govulncheck"
+
+  NODE_MODULES_DIR: "{{.ROOT_DIR}}/node_modules/.bin"
+  REDOCLY: "{{.NODE_MODULES_DIR}}/redocly"
+
+  CONTENT_OPENAPI_SOURCE: "{{.ROOT_DIR}}/shared/api/content/v1/content.openapi.yaml"
+  CONTENT_OPENAPI_BUNDLE: "{{.ROOT_DIR}}/shared/api/bundles/content.openapi.v1.bundle.yaml"
 
   ENVDIR: "{{.ROOT_DIR}}/deploy/env"
 
@@ -59,7 +65,6 @@ tasks:
       - task --list
 
   tools:golangci-lint:
-    internal: true
     cmds:
       - mkdir -p "{{.BIN_DIR}}"
       - |
@@ -69,7 +74,6 @@ tasks:
         fi
 
   tools:buf:
-    internal: true
     cmds:
       - mkdir -p "{{.BIN_DIR}}"
       - |
@@ -78,7 +82,6 @@ tasks:
         fi
 
   tools:protoc-plugins:
-    internal: true
     cmds:
       - mkdir -p "{{.BIN_DIR}}"
       - |
@@ -90,16 +93,41 @@ tasks:
         fi
 
   tools:govulncheck:
-    internal: true
     cmds:
       - mkdir -p "{{.BIN_DIR}}"
       - |
-        if [ ! -x "{{.GOVULNCHECK}}" ]; then
+        if [ ! -x "{{.GOVULNCHECK}}" ] ||
+          [ "$(go version -m "{{.GOVULNCHECK}}" 2>/dev/null |
+            awk '$1 == "mod" && $2 == "golang.org/x/vuln" { print $3 }')" != "{{.GOVULNCHECK_VERSION}}" ]; then
           GOBIN="{{.BIN_DIR}}" go install golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}
+        fi
+
+  tools:ogen:
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.OGEN}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install github.com/ogen-go/ogen/cmd/ogen@{{.OGEN_VERSION}}
+        fi
+
+  tools:yq:
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.YQ}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install github.com/mikefarah/yq/v4@{{.YQ_VERSION}}
+        fi
+
+  tools:redocly:
+    cmds:
+      - |
+        if [ ! -x "{{.REDOCLY}}" ]; then
+          npm ci --ignore-scripts
         fi
 
   fmt:
     desc: Format all Go modules
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -123,6 +151,7 @@ tasks:
 
   lint:
     desc: Lint all Go modules
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -150,6 +179,7 @@ tasks:
 
   vet:
     desc: Run go vet in all non-empty Go modules
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -164,6 +194,7 @@ tasks:
 
   test:
     desc: Run unit tests
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -184,6 +215,11 @@ tasks:
 
         exit $ERR
 
+  test:unit:
+    desc: Run unit tests in all Go modules
+    cmds:
+      - task: test
+
   check:
     desc: Run local checks
     cmds:
@@ -193,6 +229,7 @@ tasks:
 
   fmt:check:
     desc: Check formatting without changing files
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -214,6 +251,7 @@ tasks:
 
   build:
     desc: Build all non-empty Go modules
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -228,6 +266,7 @@ tasks:
 
   test:race:
     desc: Run race-enabled tests in non-empty Go modules
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -237,16 +276,72 @@ tasks:
             continue
           fi
           echo "Race testing $mod"
-          (cd "$mod" && GOWORK=off go test -race ./...)
+          (cd "$mod" && GOWORK=off go test -race -shuffle=on ./...)
         done
 
   test:integration:
-    desc: Run infrastructure integration checks
+    desc: Run Content PostgreSQL adapter tests against RELAY_CONTENT_TEST_DATABASE_URL
+    deps: [openapi:codegen]
+    preconditions:
+      - sh: test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}"
+        msg: "Set RELAY_CONTENT_TEST_DATABASE_URL to an isolated migrated Content database, or run task test:db"
+    cmds:
+      - cd content && GOWORK=off go test -race -tags=integration -count=1 ./tests/integration/...
+
+  test:search:perf:
+    desc: Measure Content Search latency and PostgreSQL plans on 100k items
+    deps: [openapi:codegen]
+    preconditions:
+      - sh: test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}"
+        msg: "Set RELAY_CONTENT_TEST_DATABASE_URL to an isolated migrated PostgreSQL 18 Content database"
+      - sh: test -n "${RELAY_CONTENT_TEST_MIGRATOR_DATABASE_URL:-}"
+        msg: "Set RELAY_CONTENT_TEST_MIGRATOR_DATABASE_URL to the migrator role for the same database"
+    cmds:
+      - cd content && GOWORK=off go test -tags=integration,searchperf -run '^TestSearchPerformance$' -count=1 -v -timeout=15m ./tests/integration/...
+
+  test:component:
+    desc: Run Content HTTP to PostgreSQL tests against RELAY_CONTENT_TEST_DATABASE_URL
+    deps: [openapi:codegen]
+    preconditions:
+      - sh: test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}"
+        msg: "Set RELAY_CONTENT_TEST_DATABASE_URL to an isolated migrated Content database, or run task test:db"
+    cmds:
+      - cd content && GOWORK=off go test -tags=component -count=1 ./tests/component/...
+
+  test:db:
+    desc: Run Content integration and component tests on an isolated PostgreSQL 18 stack
+    cmds:
+      - task: env:init
+      - |
+        set -eu
+        set -a
+        . "{{.CONTENT_ENV_FILE}}"
+        set +a
+        export COMPOSE_PROJECT_NAME="relay-content-test-${GITHUB_RUN_ID:-local}-$$"
+        export POSTGRES_BIND_HOST=127.0.0.1
+        export POSTGRES_EXTERNAL_PORT=0
+        cleanup() {
+          {{.COMPOSE}} down --volumes --remove-orphans
+        }
+        trap cleanup EXIT
+        {{.COMPOSE}} up -d --wait postgres
+        {{.COMPOSE}} run --rm db-bootstrap
+        {{.COMPOSE}} run --rm --build content-migrate
+        port=$({{.COMPOSE}} port postgres 5432 | sed 's/.*://')
+        export PGHOST=127.0.0.1 PGPORT="$port" PGUSER="$CONTENT_APP_USER"
+        export PGPASSWORD="$CONTENT_APP_PASSWORD" PGDATABASE="$CONTENT_DB"
+        export RELAY_CONTENT_TEST_DATABASE_URL="host=127.0.0.1 port=$port sslmode=disable"
+        task test:integration
+        task test:component
+
+  test:infra:
+    desc: Run infrastructure bootstrap, migrations, and isolation checks
     cmds:
       - task: compose:test
 
   deps:tidy:
     desc: Run go mod tidy for all modules
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -261,6 +356,7 @@ tasks:
 
   deps:check:
     desc: Check whether Go module metadata is tidy
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e
@@ -290,7 +386,7 @@ tasks:
         fi
         task tools:buf
         task tools:protoc-plugins
-        (cd shared/proto && "{{.BUF}}" generate)
+        (cd shared/proto && "{{.BUF}}" generate --template buf.gen.yml)
 
   proto:deps:
     desc: Explicitly update pinned protobuf dependencies
@@ -311,16 +407,81 @@ tasks:
           echo "No protobuf contracts; skipping breaking check"
           exit 0
         fi
+        baseline_ref=refs/remotes/origin/main
+        if ! git rev-parse --verify --quiet "$baseline_ref^{commit}" >/dev/null; then
+          baseline_ref=refs/heads/main
+        fi
+        baseline=$(git rev-parse --verify "$baseline_ref^{commit}") || {
+          echo "Missing main branch for protobuf breaking check" >&2
+          exit 1
+        }
+        if ! git ls-tree -r --name-only "$baseline" -- shared/proto | grep -q '\.proto$'; then
+          echo "No protobuf contracts in main; skipping breaking check"
+          exit 0
+        fi
         task tools:buf
-        "{{.BUF}}" breaking shared/proto --against '.git#branch=main,subdir=shared/proto'
+        "{{.BUF}}" breaking shared/proto --against ".git#ref=$baseline,subdir=shared/proto"
+
+  openapi:lint:
+    desc: Lint OpenAPI source contracts
+    deps: [tools:redocly]
+    cmds:
+      - '"{{.REDOCLY}}" lint "{{.CONTENT_OPENAPI_SOURCE}}"'
+
+  openapi:bundle:
+    desc: Bundle OpenAPI source contracts for generation and distribution
+    deps: [tools:redocly]
+    cmds:
+      - mkdir -p "{{.ROOT_DIR}}/shared/api/bundles"
+      - '"{{.REDOCLY}}" bundle "{{.CONTENT_OPENAPI_SOURCE}}" --output "{{.CONTENT_OPENAPI_BUNDLE}}"'
+
+  openapi:generate:
+    desc: Generate Go code from bundled OpenAPI contracts
+    cmds:
+      - task: openapi:bundle
+      - task: openapi:codegen
+
+  openapi:codegen:
+    internal: true
+    desc: Generate Go code from the committed OpenAPI bundle
+    deps: [tools:ogen, tools:yq]
+    cmds:
+      - |
+        target=$("{{.YQ}}" e '."x-ogen".target' "{{.CONTENT_OPENAPI_BUNDLE}}")
+        package=$("{{.YQ}}" e '."x-ogen".package' "{{.CONTENT_OPENAPI_BUNDLE}}")
+        if [ -z "$target" ] || [ "$target" = "null" ] || [ -z "$package" ] || [ "$package" = "null" ]; then
+          echo "Missing x-ogen target/package in {{.CONTENT_OPENAPI_BUNDLE}}" >&2
+          exit 1
+        fi
+        case "$target" in
+          /*) ;;
+          *) target="{{.ROOT_DIR}}/${target#./}" ;;
+        esac
+        mkdir -p "$target"
+        (
+          cd "$target"
+          "{{.OGEN}}" \
+            --target . \
+            --package "$package" \
+            --clean \
+            "{{.CONTENT_OPENAPI_BUNDLE}}"
+        )
+
+  contracts:lint:
+    desc: Lint all machine-readable contracts
+    cmds:
+      - task: proto:lint
+      - task: openapi:lint
 
   generate:
     desc: Generate all current contracts
     cmds:
       - task: proto:generate
+      - task: openapi:generate
 
   vuln:
     desc: Scan non-empty Go modules for known vulnerabilities
+    deps: [openapi:codegen]
     cmds:
       - |
         set -e

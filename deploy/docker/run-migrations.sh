@@ -8,4 +8,6 @@ if ! find "$migration_dir" -maxdepth 1 -type f -name '*.sql' -print -quit | grep
   exit 0
 fi
 
-exec goose -dir "$migration_dir" postgres "${GOOSE_DBSTRING:?GOOSE_DBSTRING is required}" up
+: "${GOOSE_DBSTRING:?GOOSE_DBSTRING is required}"
+export GOOSE_DRIVER=postgres
+exec goose -dir "$migration_dir" up

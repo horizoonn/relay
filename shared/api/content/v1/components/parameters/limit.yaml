@@ -1,0 +1,9 @@
+name: limit
+in: query
+required: false
+description: Maximum number of Items to return. Invalid values are rejected, not clamped.
+schema:
+  type: integer
+  minimum: 1
+  maximum: 100
+  default: 20

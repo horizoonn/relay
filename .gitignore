@@ -29,6 +29,8 @@ profile.cov
 
 /bin/
 /coverage/
+/node_modules/
+/shared/pkg/openapi/
 /tmp/
 
 /deploy/env/*.env

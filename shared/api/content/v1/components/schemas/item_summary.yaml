@@ -1,0 +1,42 @@
+type: object
+additionalProperties: false
+required:
+  - id
+  - source_type
+  - preview
+  - preview_truncated
+  - keep
+  - review_status
+  - created_at
+  - updated_at
+  - last_captured_at
+properties:
+  id:
+    $ref: ./item_id.yaml
+  source_type:
+    $ref: ./source_type.yaml
+  display_title:
+    type: string
+    minLength: 1
+    maxLength: 256
+    description: User title override. Omitted when absent.
+  preview:
+    type: string
+    maxLength: 512
+    description: First 512 Unicode code points of the original Text or OriginalURL.
+  preview_truncated:
+    type: boolean
+    description: True when the source display string contains more than 512 Unicode code points.
+  keep:
+    type: boolean
+  review_status:
+    $ref: ./review_status.yaml
+  created_at:
+    type: string
+    format: date-time
+  updated_at:
+    type: string
+    format: date-time
+  last_captured_at:
+    type: string
+    format: date-time
