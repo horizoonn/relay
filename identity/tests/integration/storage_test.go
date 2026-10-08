@@ -267,11 +267,9 @@ type discardVerification struct{}
 func (discardVerification) QueueVerification(context.Context, string) error { return nil }
 func verifyTestUser(t *testing.T, pool *pgxpool.Pool, id uuid.UUID) {
 	t.Helper()
-	if _, err := pool.Exec(
-		t.Context(),
-		`UPDATE identity.users SET email_verified_at=clock_timestamp() WHERE id=$1`,
-		id,
-	); err != nil {
+	tx := postgres.NewTxManager(pool)
+	users := userrepo.NewRepository(tx.Executor, 5*time.Second)
+	if err := users.VerifyEmail(t.Context(), id, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 }

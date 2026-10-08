@@ -129,9 +129,10 @@ func newFixtureWithRules(
 		identitylimit.EmailAccount,
 		identitylimit.ActionIP,
 	} {
+		// Keep unrelated budgets permissive even when Redis wall time moves backwards.
 		rules[scope] = ratelimit.Rule{
 			Rate:   10000,
-			Period: time.Second,
+			Period: time.Hour,
 			Burst:  10000,
 		}
 	}

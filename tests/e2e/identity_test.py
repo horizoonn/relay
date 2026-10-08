@@ -181,7 +181,7 @@ def main():
         private = work / "signing.pem"
         run(["openssl", "genpkey", "-algorithm", "Ed25519", "-out", str(private)])
         private.chmod(0o444)  # Parent directory is private; container secret mount is read-only.
-        policies = dict(IDENTITY_RATE_EMAIL_IP="10000/1s/10000", IDENTITY_RATE_EMAIL_ACCOUNT="10000/1s/10000", IDENTITY_RATE_ACTION_IP="10000/1s/10000", IDENTITY_RATE_LIMIT_KEY=secrets.token_hex(32),
+        policies = dict(IDENTITY_RATE_EMAIL_IP="10000/1h/10000", IDENTITY_RATE_EMAIL_ACCOUNT="10000/1h/10000", IDENTITY_RATE_ACTION_IP="10000/1h/10000", IDENTITY_RATE_LIMIT_KEY=secrets.token_hex(32),
                         IDENTITY_RATE_LOGIN_IP="10/1h/10", IDENTITY_RATE_LOGIN_ACCOUNT="1/1h/1",
                         IDENTITY_RATE_REGISTER_IP="3/1h/3", IDENTITY_RATE_REFRESH_IP="1/1h/1",
                         IDENTITY_RATE_READ_USER="2/1h/2", IDENTITY_RATE_LOGOUT_IP="1/1h/1",
@@ -194,7 +194,8 @@ def main():
         if content or account:
             for name in policies:
                 if name != "IDENTITY_RATE_LIMIT_KEY":
-                    policies[name] = "10000/1s/10000"
+                    policies[name] = "10000/1h/10000"
+        policies["IDENTITY_CURSOR_SIGNING_KEY"] = secrets.token_hex(32)
         policies["IDENTITY_MAIL_ENCRYPTION_KEY"] = secrets.token_hex(32)
         policies["IDENTITY_SMTP_ALLOW_INSECURE"] = "true"
         if content:
