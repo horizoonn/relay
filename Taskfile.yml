@@ -410,6 +410,7 @@ tasks:
     cmds:
       - |
         if ! find shared/proto -type f -name '*.proto' -print -quit | grep -q .; then
+          rm -rf "{{.ROOT_DIR}}/shared/pkg/proto"
           echo "No protobuf contracts; skipping generation"
           exit 0
         fi
