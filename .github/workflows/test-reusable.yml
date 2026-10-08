@@ -43,8 +43,8 @@ jobs:
       - name: Validate and test Compose stack
         run: task test:infra
 
-  content-postgres:
-    name: Content PostgreSQL + HTTP
+  integration-component:
+    name: Content + Identity integration and component tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -61,5 +61,5 @@ jobs:
       - name: Set up Task
         uses: arduino/setup-task@v3.0.0
 
-      - name: Run Content integration and component tests
+      - name: Run Content and Identity integration and component tests
         run: task test:db

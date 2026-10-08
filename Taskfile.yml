@@ -1,8 +1,6 @@
 version: "3"
 
 vars:
-  IDENTITY_OPENAPI_BUNDLE: "{{.ROOT_DIR}}/shared/api/bundles/identity.openapi.v1.bundle.yaml"
-  IDENTITY_OPENAPI_SOURCE: "{{.ROOT_DIR}}/shared/api/identity/v1/identity.openapi.yaml"
   GOLANGCI_LINT_VERSION: "v2.13.2"
   BUF_VERSION: "v1.73.0"
   PROTOC_GEN_GO_VERSION: "v1.36.12"
@@ -16,6 +14,7 @@ vars:
   GRPCURL_VERSION: "v1.9.4"
   ENVSUBST_VERSION: "v1.4.3"
   GOVULNCHECK_VERSION: "v1.8.0"
+  MOCKERY_VERSION: "v3.7.4"
 
   BIN_DIR: "{{.ROOT_DIR}}/bin"
 
@@ -27,12 +26,15 @@ vars:
   GRPCURL: "{{.BIN_DIR}}/grpcurl"
   ENVSUBST: "{{.BIN_DIR}}/envsubst"
   GOVULNCHECK: "{{.BIN_DIR}}/govulncheck"
+  MOCKERY: "{{.BIN_DIR}}/mockery"
 
   NODE_MODULES_DIR: "{{.ROOT_DIR}}/node_modules/.bin"
   REDOCLY: "{{.NODE_MODULES_DIR}}/redocly"
 
   CONTENT_OPENAPI_SOURCE: "{{.ROOT_DIR}}/shared/api/content/v1/content.openapi.yaml"
   CONTENT_OPENAPI_BUNDLE: "{{.ROOT_DIR}}/shared/api/bundles/content.openapi.v1.bundle.yaml"
+  IDENTITY_OPENAPI_SOURCE: "{{.ROOT_DIR}}/shared/api/identity/v1/identity.openapi.yaml"
+  IDENTITY_OPENAPI_BUNDLE: "{{.ROOT_DIR}}/shared/api/bundles/identity.openapi.v1.bundle.yaml"
 
   ENVDIR: "{{.ROOT_DIR}}/deploy/env"
 
@@ -60,45 +62,7 @@ vars:
   MODULES: '{{env "MODULES" | default "content delivery processing identity platform shared"}}'
   SERVICES: '{{env "SERVICES" | default "core,content,delivery,processing,identity"}}'
 
-  MOCKERY_VERSION: "v3.7.4"
-
-  MOCKERY: "{{.BIN_DIR}}/mockery"
-
 tasks:
-  test:e2e:
-    desc: Run Identity and Content HTTPS scenarios on isolated Compose stacks
-    cmds:
-      - python3 tests/e2e/identity_test.py
-      - python3 tests/e2e/identity_test.py --content
-      - python3 tests/e2e/identity_test.py --account
-
-  proxy:up:
-    desc: Validate and start the optional HTTPS reverse proxy
-    deps: [infra:config]
-    preconditions:
-      - sh: >-
-          test -s "{{.ROOT_DIR}}/deploy/proxy/certs/server.crt" &&
-          test -s "{{.ROOT_DIR}}/deploy/proxy/certs/server.key"
-        msg: "Missing proxy TLS certificate: see deploy/proxy/README.md"
-    cmds:
-      - >-
-        {{.COMPOSE}} run --rm --no-deps nginx nginx -t
-      - "{{.COMPOSE}} up -d nginx"
-
-  mocks:generate:
-    desc: Generate selected Identity unit-test mocks
-    deps: [tools:mockery]
-    cmds:
-      - cd identity && GOWORK=off "{{.MOCKERY}}" --config ../.mockery.yml
-
-  tools:mockery:
-    cmds:
-      - mkdir -p "{{.BIN_DIR}}"
-      - |
-        if [ ! -x "{{.MOCKERY}}" ] || [ "$("{{.MOCKERY}}" version)" != "{{.MOCKERY_VERSION}}" ]; then
-          GOBIN="{{.BIN_DIR}}" go install github.com/vektra/mockery/v3@{{.MOCKERY_VERSION}}
-        fi
-
   default:
     desc: Show available tasks
     cmds:
@@ -112,6 +76,20 @@ tasks:
           GOBIN="{{.BIN_DIR}}" go install \
             github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
         fi
+
+  tools:mockery:
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.MOCKERY}}" ] || [ "$("{{.MOCKERY}}" version)" != "{{.MOCKERY_VERSION}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install github.com/vektra/mockery/v3@{{.MOCKERY_VERSION}}
+        fi
+
+  mocks:generate:
+    desc: Generate selected Identity unit-test mocks
+    deps: [tools:mockery]
+    cmds:
+      - cd identity && GOWORK=off "{{.MOCKERY}}" --config ../.mockery.yml
 
   tools:buf:
     cmds:
@@ -327,13 +305,20 @@ tasks:
         done
 
   test:integration:
-    desc: Run Content PostgreSQL adapter tests against RELAY_CONTENT_TEST_DATABASE_URL
+    desc: Run integration tests for SERVICE=content|identity (default content)
+    vars:
+      SERVICE: '{{.SERVICE | default "content"}}'
     deps: [openapi:codegen]
     preconditions:
-      - sh: test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}"
-        msg: "Set RELAY_CONTENT_TEST_DATABASE_URL to an isolated migrated Content database, or run task test:db"
+      - sh: |
+          case "{{.SERVICE}}" in
+            content) test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}" ;;
+            identity) test -n "${RELAY_IDENTITY_TEST_DATABASE_URL:-}" ;;
+            *) exit 1 ;;
+          esac
+        msg: "Choose SERVICE=content|identity and set its RELAY_*_TEST_DATABASE_URL, or run task test:db"
     cmds:
-      - cd content && GOWORK=off go test -race -tags=integration -count=1 ./tests/integration/...
+      - cd {{.SERVICE}} && GOWORK=off go test -race -tags=integration -count=1 ./tests/integration/...
 
   test:search:perf:
     desc: Measure Content Search latency and PostgreSQL plans on 100k items
@@ -344,42 +329,93 @@ tasks:
       - sh: test -n "${RELAY_CONTENT_TEST_MIGRATOR_DATABASE_URL:-}"
         msg: "Set RELAY_CONTENT_TEST_MIGRATOR_DATABASE_URL to the migrator role for the same database"
     cmds:
-      - cd content && GOWORK=off go test -tags=integration,searchperf -run '^TestSearchPerformance$' -count=1 -v -timeout=15m ./tests/integration/...
+      - >-
+        cd content && GOWORK=off go test -tags=integration,searchperf
+        -run '^TestSearchPerformance$' -count=1 -v -timeout=15m ./tests/integration/...
 
   test:component:
-    desc: Run Content HTTP to PostgreSQL tests against RELAY_CONTENT_TEST_DATABASE_URL
+    desc: Run component tests for SERVICE=content|identity (default content)
+    vars:
+      SERVICE: '{{.SERVICE | default "content"}}'
     deps: [openapi:codegen]
     preconditions:
-      - sh: test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}"
-        msg: "Set RELAY_CONTENT_TEST_DATABASE_URL to an isolated migrated Content database, or run task test:db"
+      - sh: |
+          case "{{.SERVICE}}" in
+            content) test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}" ;;
+            identity) test -n "${RELAY_IDENTITY_TEST_DATABASE_URL:-}" ;;
+            *) exit 1 ;;
+          esac
+        msg: "Choose SERVICE=content|identity and set its RELAY_*_TEST_DATABASE_URL, or run task test:db"
     cmds:
-      - cd content && GOWORK=off go test -tags=component -count=1 ./tests/component/...
+      - cd {{.SERVICE}} && GOWORK=off go test -race -tags=component -count=1 ./tests/component/...
 
   test:db:
-    desc: Run Content integration and component tests on an isolated PostgreSQL 18 stack
+    desc: Run Content and Identity integration/component tests on isolated PostgreSQL 18, Redis and Mailpit
     cmds:
       - task: env:init
       - |
         set -eu
         set -a
         . "{{.CONTENT_ENV_FILE}}"
+        . "{{.IDENTITY_ENV_FILE}}"
         set +a
-        export COMPOSE_PROJECT_NAME="relay-content-test-${GITHUB_RUN_ID:-local}-$$"
+        export COMPOSE_PROJECT_NAME="relay-db-test-${GITHUB_RUN_ID:-local}-$$"
         export POSTGRES_BIND_HOST=127.0.0.1
         export POSTGRES_EXTERNAL_PORT=0
+        redis_override=$(mktemp /tmp/relay-redis-test.XXXXXX.yml)
+        cat > "$redis_override" <<'YAML'
+        services:
+          mailpit:
+            profiles: []
+            ports: !override
+              - "127.0.0.1::8025"
+              - "127.0.0.1::1025"
+          redis:
+            networks: [relay-net]
+            ports:
+              - "127.0.0.1::6379"
+        YAML
         cleanup() {
-          {{.COMPOSE}} down --volumes --remove-orphans
+          {{.COMPOSE}} -f "$redis_override" --profile mail down --volumes --remove-orphans
+          rm -f "$redis_override"
         }
         trap cleanup EXIT
-        {{.COMPOSE}} up -d --wait postgres
-        {{.COMPOSE}} run --rm db-bootstrap
-        {{.COMPOSE}} run --rm --build content-migrate
-        port=$({{.COMPOSE}} port postgres 5432 | sed 's/.*://')
-        export PGHOST=127.0.0.1 PGPORT="$port" PGUSER="$CONTENT_APP_USER"
-        export PGPASSWORD="$CONTENT_APP_PASSWORD" PGDATABASE="$CONTENT_DB"
-        export RELAY_CONTENT_TEST_DATABASE_URL="host=127.0.0.1 port=$port sslmode=disable"
-        task test:integration
-        task test:component
+        {{.COMPOSE}} -f "$redis_override" --profile mail up -d --wait postgres redis mailpit
+        {{.COMPOSE}} -f "$redis_override" --profile mail run --rm db-bootstrap
+        for service in content identity; do
+          {{.COMPOSE}} -f "$redis_override" --profile mail run --rm --build "$service-migrate"
+        done
+        port=$({{.COMPOSE}} -f "$redis_override" --profile mail port postgres 5432 | sed 's/.*://')
+        redis_port=$({{.COMPOSE}} -f "$redis_override" --profile mail port redis 6379 | sed 's/.*://')
+        test "$redis_port" -gt 0
+        export RELAY_IDENTITY_TEST_REDIS_URL="redis://127.0.0.1:$redis_port/0"
+        export RELAY_CONTENT_TEST_REDIS_URL="$RELAY_IDENTITY_TEST_REDIS_URL"
+        smtp_port=$({{.COMPOSE}} -f "$redis_override" --profile mail port mailpit 1025 | sed 's/.*://')
+        mail_port=$({{.COMPOSE}} -f "$redis_override" --profile mail port mailpit 8025 | sed 's/.*://')
+        export RELAY_IDENTITY_TEST_SMTP_ADDR="127.0.0.1:$smtp_port"
+        export RELAY_IDENTITY_TEST_MAILPIT_URL="http://127.0.0.1:$mail_port"
+        export PGHOST=127.0.0.1 PGPORT="$port"
+        for service in content identity; do
+          case "$service" in
+            content)
+              export PGUSER="$CONTENT_APP_USER" PGPASSWORD="$CONTENT_APP_PASSWORD" PGDATABASE="$CONTENT_DB"
+              export RELAY_CONTENT_TEST_DATABASE_URL="host=127.0.0.1 port=$port sslmode=disable"
+              ;;
+            identity)
+              export PGUSER="$IDENTITY_APP_USER" PGPASSWORD="$IDENTITY_APP_PASSWORD" PGDATABASE="$IDENTITY_DB"
+              export RELAY_IDENTITY_TEST_DATABASE_URL="host=127.0.0.1 port=$port sslmode=disable"
+              ;;
+          esac
+          task test:integration SERVICE="$service"
+          task test:component SERVICE="$service"
+        done
+
+  test:e2e:
+    desc: Run Identity and Content HTTPS scenarios on isolated Compose stacks
+    cmds:
+      - python3 tests/e2e/identity_test.py
+      - python3 tests/e2e/identity_test.py --content
+      - python3 tests/e2e/identity_test.py --account
 
   test:infra:
     desc: Run infrastructure bootstrap, migrations, isolation, and proxy checks
@@ -526,10 +562,11 @@ tasks:
       - task: openapi:lint
 
   generate:
-    desc: Generate all current contracts
+    desc: Generate contracts and selected unit-test mocks
     cmds:
       - task: proto:generate
       - task: openapi:generate
+      - task: mocks:generate
 
   vuln:
     desc: Scan non-empty Go modules for known vulnerabilities
@@ -590,6 +627,19 @@ tasks:
     cmds:
       - task: infra:config
 
+  proxy:up:
+    desc: Validate and start the optional HTTPS reverse proxy
+    deps: [infra:config]
+    preconditions:
+      - sh: >-
+          test -s "{{.ROOT_DIR}}/deploy/proxy/certs/server.crt" &&
+          test -s "{{.ROOT_DIR}}/deploy/proxy/certs/server.key"
+        msg: "Missing proxy TLS certificate: see deploy/proxy/README.md"
+    cmds:
+      - >-
+        {{.COMPOSE}} run --rm --no-deps nginx nginx -t
+      - "{{.COMPOSE}} up -d nginx"
+
   infra:up:
     desc: Start PostgreSQL, Redis, Kafka, topics, and Kafka UI
     deps: [infra:config]
@@ -646,7 +696,7 @@ tasks:
     desc: Stop the local stack without deleting persisted data
     deps: [env:init]
     cmds:
-      - "{{.COMPOSE}} down --remove-orphans"
+      - "{{.COMPOSE}} --profile gateway --profile mail down --remove-orphans"
 
   compose:test:
     desc: Start an isolated stack and verify bootstrap and migrations twice
