@@ -177,11 +177,11 @@ func newRouteFixtureWithOwner(
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := NewServer(handler, fakeAuthenticator{
+	server, err := NewServer(handler, fakeVerifier{
 		owner: authenticatedOwner,
 		token: "access",
-		csrf:  "csrf",
-	}, testOrigin)
+		csrf:  testCSRF,
+	}, testOrigin, unlimitedLimiter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func routeRequest(method, path, body, contentType string) *http.Request {
 		req = httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(body))
 	}
 	req.AddCookie(&http.Cookie{
-		Name:  "relay_access_token",
+		Name:  "__Host-relay_access",
 		Value: "access",
 	})
 	if contentType != "" {
@@ -209,7 +209,11 @@ func routeRequest(method, path, body, contentType string) *http.Request {
 	}
 	if method != http.MethodGet {
 		req.Header.Set("Origin", testOrigin)
-		req.Header.Set("X-CSRF-Token", "csrf")
+		req.Header.Set("X-CSRF-Token", testCSRF)
+		req.AddCookie(&http.Cookie{
+			Name:  "__Host-relay_csrf",
+			Value: testCSRF,
+		})
 	}
 	return req
 }

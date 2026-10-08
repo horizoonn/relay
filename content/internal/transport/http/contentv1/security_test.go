@@ -2,53 +2,45 @@ package contentv1
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"testing"
 	"uuid"
 
+	"github.com/horizoonn/relay/platform/pkg/security/accessjwt"
 	contentapi "github.com/horizoonn/relay/shared/pkg/openapi/content/v1"
-
-	"github.com/horizoonn/relay/content/internal/auth"
 )
 
-type fakeAuthenticator struct {
+type fakeVerifier struct {
 	owner uuid.UUID
 	token string
 	csrf  string
 	err   error
 }
 
-func (f fakeAuthenticator) Introspect(
-	_ context.Context,
-	token string,
-) (uuid.UUID, error) {
+func (f fakeVerifier) Verify(token string) (accessjwt.Access, error) {
 	if f.err != nil {
-		return uuid.Nil(), f.err
+		return accessjwt.Access{}, f.err
 	}
 	if f.token != "" && token != f.token {
-		return uuid.Nil(), auth.ErrUnauthenticated
+		return accessjwt.Access{}, errUnauthenticated
 	}
-	return f.owner, nil
+	return accessjwt.Access{
+		UserID:    f.owner,
+		SessionID: uuid.NewV7(),
+		CSRFHash:  sha256.Sum256([]byte(f.csrf)),
+	}, nil
 }
 
-func (f fakeAuthenticator) ValidateCSRF(
-	_ context.Context,
-	token,
-	csrf string,
-) error {
-	if token != f.token || csrf != f.csrf {
-		return auth.ErrForbidden
-	}
-	return nil
-}
+const testCSRF = "ccccccccccccccccccccccccccccccccccccccccccc"
 
 func TestSecurityCSRFOrigin(t *testing.T) {
 	t.Parallel()
 	owner := uuid.New()
-	s := NewSecurity(fakeAuthenticator{
+	s := NewSecurity(fakeVerifier{
 		owner: owner,
 		token: "access",
-		csrf:  "csrf",
+		csrf:  testCSRF,
 	}, "https://relay.example")
 	ctx, err := s.HandleAccessCookie(
 		context.Background(),
@@ -73,24 +65,29 @@ func TestSecurityCSRFOrigin(t *testing.T) {
 		{
 			name:   "valid",
 			origin: testOrigin,
-			csrf:   "csrf",
+			csrf:   testCSRF,
 		},
 		{
 			name:    "invalid origin",
 			origin:  "https://evil.example",
-			csrf:    "csrf",
-			wantErr: auth.ErrForbidden,
+			csrf:    testCSRF,
+			wantErr: errForbidden,
 		},
 		{
 			name:    "invalid token",
 			origin:  testOrigin,
 			csrf:    "wrong",
-			wantErr: auth.ErrForbidden,
+			wantErr: errForbidden,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := s.HandleCsrfHeader(withRequestOrigin(ctx, tt.origin), contentapi.CaptureItemOperation,
+			_, err := s.HandleCsrfHeader(withBrowserRequest(ctx, browserRequest{
+				origin:          tt.origin,
+				csrfCookie:      testCSRF,
+				originCount:     1,
+				csrfHeaderCount: 1,
+			}), contentapi.CaptureItemOperation,
 				contentapi.CsrfHeader{
 					APIKey: tt.csrf,
 				})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"uuid"
 
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
 	contentapi "github.com/horizoonn/relay/shared/pkg/openapi/content/v1"
 
 	"github.com/horizoonn/relay/content/internal/domain"
@@ -28,7 +29,7 @@ func (h *Handler) GetItem(
 	}
 	return &contentapi.ItemHeaders{
 		AcceptPatch: contentapi.AcceptPatchApplicationMergePatchJSON,
-		XRequestID:  requestID(ctx),
+		XRequestID:  httpmiddleware.RequestID(ctx),
 		Response:    apiItem,
 	}, nil
 }
@@ -73,7 +74,7 @@ func (h *Handler) PatchItem(
 	}
 	return &contentapi.ItemHeaders{
 		AcceptPatch: contentapi.AcceptPatchApplicationMergePatchJSON,
-		XRequestID:  requestID(ctx),
+		XRequestID:  httpmiddleware.RequestID(ctx),
 		Response:    apiItem,
 	}, nil
 }
@@ -90,6 +91,6 @@ func (h *Handler) DeleteItem(
 		return nil, err
 	}
 	return &contentapi.DeleteItemNoContent{
-		XRequestID: requestID(ctx),
+		XRequestID: httpmiddleware.RequestID(ctx),
 	}, nil
 }

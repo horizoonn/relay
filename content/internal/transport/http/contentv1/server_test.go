@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"uuid"
+
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
+	"go.uber.org/zap"
 
 	"github.com/horizoonn/relay/content/internal/usecase/capture"
 	"github.com/horizoonn/relay/content/internal/usecase/collection"
@@ -18,8 +19,8 @@ import (
 	"github.com/horizoonn/relay/content/internal/usecase/search"
 )
 
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+func testLogger() *zap.Logger {
+	return zap.NewNop()
 }
 
 func testHandler(t *testing.T) *Handler {
@@ -52,7 +53,7 @@ func TestServerErrors(t *testing.T) {
 		cookie     string
 		origin     string
 		csrf       string
-		auth       fakeAuthenticator
+		auth       fakeVerifier
 		wantStatus int
 		wantCode   string
 	}{
@@ -62,11 +63,11 @@ func TestServerErrors(t *testing.T) {
 			path:   "/api/v1/items",
 			cookie: "access",
 			origin: "https://evil.example",
-			csrf:   "csrf",
-			auth: fakeAuthenticator{
+			csrf:   testCSRF,
+			auth: fakeVerifier{
 				owner: uuid.New(),
 				token: "access",
-				csrf:  "csrf",
+				csrf:  testCSRF,
 			},
 			wantStatus: http.StatusForbidden,
 			wantCode:   "FORBIDDEN",
@@ -76,11 +77,11 @@ func TestServerErrors(t *testing.T) {
 			method: http.MethodPost,
 			path:   "/api/v1/items",
 			origin: "https://evil.example",
-			csrf:   "csrf",
-			auth: fakeAuthenticator{
+			csrf:   testCSRF,
+			auth: fakeVerifier{
 				owner: uuid.New(),
 				token: "access",
-				csrf:  "csrf",
+				csrf:  testCSRF,
 			},
 			wantStatus: http.StatusUnauthorized,
 			wantCode:   "UNAUTHENTICATED",
@@ -90,7 +91,7 @@ func TestServerErrors(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/api/v1/items/recent",
 			cookie: "invalid",
-			auth: fakeAuthenticator{
+			auth: fakeVerifier{
 				owner: uuid.New(),
 				token: "access",
 			},
@@ -98,15 +99,15 @@ func TestServerErrors(t *testing.T) {
 			wantCode:   "UNAUTHENTICATED",
 		},
 		{
-			name:   "Identity timeout",
+			name:   "verifier rejects access",
 			method: http.MethodGet,
 			path:   "/api/v1/items/recent",
 			cookie: "access",
-			auth: fakeAuthenticator{
+			auth: fakeVerifier{
 				err: context.DeadlineExceeded,
 			},
-			wantStatus: http.StatusServiceUnavailable,
-			wantCode:   "SERVICE_UNAVAILABLE",
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "UNAUTHENTICATED",
 		},
 		{
 			name:   "missing CSRF",
@@ -114,7 +115,7 @@ func TestServerErrors(t *testing.T) {
 			path:   "/api/v1/items",
 			cookie: "access",
 			origin: testOrigin,
-			auth: fakeAuthenticator{
+			auth: fakeVerifier{
 				owner: uuid.New(),
 				token: "access",
 			},
@@ -133,14 +134,14 @@ func TestServerErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			server, err := NewServer(testHandler(t), tt.auth, testOrigin)
+			server, err := NewServer(testHandler(t), tt.auth, testOrigin, unlimitedLimiter{})
 			if err != nil {
 				t.Fatal(err)
 			}
 			request := httptest.NewRequestWithContext(context.Background(), tt.method, tt.path, strings.NewReader(`{}`))
 			if tt.cookie != "" {
 				request.AddCookie(&http.Cookie{
-					Name:  "relay_access_token",
+					Name:  "__Host-relay_access",
 					Value: tt.cookie,
 				})
 			}
@@ -149,6 +150,10 @@ func TestServerErrors(t *testing.T) {
 			}
 			if tt.csrf != "" {
 				request.Header.Set("X-CSRF-Token", tt.csrf)
+				request.AddCookie(&http.Cookie{
+					Name:  "__Host-relay_csrf",
+					Value: tt.csrf,
+				})
 			}
 			response := httptest.NewRecorder()
 			server.ServeHTTP(response, request)
@@ -160,7 +165,7 @@ func TestServerErrors(t *testing.T) {
 func TestServerErrorFallback(t *testing.T) {
 	t.Parallel()
 	response := httptest.NewRecorder()
-	ctx := withRequestID(context.Background(), "request-1")
+	ctx := httpmiddleware.WithRequestID(context.Background(), "request-1")
 	testHandler(t).decodeError(ctx, response, nil, errors.New("encode response failed"))
 	assertProblem(t, response, http.StatusInternalServerError, "INTERNAL_ERROR")
 }
@@ -190,7 +195,7 @@ func TestNewServerOrigin(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := NewServer(testHandler(t), fakeAuthenticator{}, tt.origin); err == nil {
+			if _, err := NewServer(testHandler(t), fakeVerifier{}, tt.origin, unlimitedLimiter{}); err == nil {
 				t.Fatalf("NewServer accepted origin %q", tt.origin)
 			}
 		})
@@ -207,7 +212,7 @@ func TestNewHandlerDependencies(t *testing.T) {
 
 func TestNewServerHandler(t *testing.T) {
 	t.Parallel()
-	_, err := NewServer(&Handler{}, fakeAuthenticator{}, "https://relay.example")
+	_, err := NewServer(&Handler{}, fakeVerifier{}, "https://relay.example", unlimitedLimiter{})
 	if err == nil {
 		t.Fatal("NewServer accepted a handler without use cases")
 	}
@@ -215,7 +220,7 @@ func TestNewServerHandler(t *testing.T) {
 
 func TestMethodNotAllowed(t *testing.T) {
 	t.Parallel()
-	srv, err := NewServer(testHandler(t), fakeAuthenticator{}, "https://relay.example")
+	srv, err := NewServer(testHandler(t), fakeVerifier{}, "https://relay.example", unlimitedLimiter{})
 	if err != nil {
 		t.Fatal(err)
 	}

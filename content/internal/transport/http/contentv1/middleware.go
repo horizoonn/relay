@@ -1,31 +1,36 @@
 package contentv1
 
 import (
-	"context"
 	"net/http"
-	"strings"
-	"uuid"
+
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
+	contentapi "github.com/horizoonn/relay/shared/pkg/openapi/content/v1"
 )
 
 const maxJSONBodyBytes = 512 << 10
 
-type requestIDKey struct{}
-
-func requestID(ctx context.Context) string {
-	id, _ := ctx.Value(requestIDKey{}).(string)
-	return id
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return httpmiddleware.RequestIDs(httpmiddleware.PrivateResponses(next))
 }
 
-func requestIDMiddleware(next http.Handler) http.Handler {
+func (h *Handler) browserSecurity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-ID")
-		if len(id) == 0 || len(id) > 128 || strings.ContainsAny(id, "\r\n\x00") {
-			id = uuid.New().String()
+		for _, name := range []string{"__Host-relay_access", "__Host-relay_csrf"} {
+			if len(r.CookiesNamed(name)) > 1 {
+				h.writeProblem(w, problemFor(r.Context(), http.StatusBadRequest, contentapi.ProblemCodeINVALIDREQUEST,
+					"Invalid request", "Duplicate authentication cookies"))
+				return
+			}
 		}
-		w.Header().Set("X-Request-ID", id)
-		ctx := withRequestID(r.Context(), id)
-		ctx = withRequestOrigin(ctx, r.Header.Get("Origin"))
-		next.ServeHTTP(w, r.WithContext(ctx))
+		request := browserRequest{
+			origin:          r.Header.Get("Origin"),
+			originCount:     len(r.Header.Values("Origin")),
+			csrfHeaderCount: len(r.Header.Values("X-CSRF-Token")),
+		}
+		if cookie, err := r.Cookie("__Host-relay_csrf"); err == nil {
+			request.csrfCookie = cookie.Value
+		}
+		next.ServeHTTP(w, r.WithContext(withBrowserRequest(r.Context(), request)))
 	})
 }
 

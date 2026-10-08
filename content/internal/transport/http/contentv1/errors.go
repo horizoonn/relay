@@ -4,16 +4,21 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"uuid"
 
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
+	"github.com/horizoonn/relay/platform/pkg/logger"
+	"github.com/horizoonn/relay/platform/pkg/ratelimit"
 	contentapi "github.com/horizoonn/relay/shared/pkg/openapi/content/v1"
 	"github.com/ogen-go/ogen/ogenerrors"
 	"github.com/ogen-go/ogen/validate"
+	"go.uber.org/zap"
 
-	"github.com/horizoonn/relay/content/internal/auth"
 	"github.com/horizoonn/relay/content/internal/domain"
 	captureusecase "github.com/horizoonn/relay/content/internal/usecase/capture"
 	collectionusecase "github.com/horizoonn/relay/content/internal/usecase/collection"
@@ -21,9 +26,10 @@ import (
 	searchusecase "github.com/horizoonn/relay/content/internal/usecase/search"
 )
 
-func withRequestID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, requestIDKey{}, id)
-}
+var (
+	errUnauthenticated = errors.New("unauthenticated")
+	errForbidden       = errors.New("forbidden")
+)
 
 func problemFor(
 	ctx context.Context,
@@ -31,7 +37,7 @@ func problemFor(
 	code contentapi.ProblemCode,
 	title, detail string,
 ) *contentapi.ProblemStatusCodeWithHeaders {
-	id := requestID(ctx)
+	id := httpmiddleware.RequestID(ctx)
 	if id == "" {
 		id = uuid.New().String()
 	}
@@ -59,18 +65,17 @@ func (h *Handler) NewError(
 ) *contentapi.ProblemStatusCodeWithHeaders {
 	status, code, title, detail := describeError(ctx, err)
 	if status >= http.StatusInternalServerError {
-		h.log.ErrorContext(
-			ctx,
-			"content HTTP request failed",
-			"status",
-			status,
-			"request_id",
-			requestID(ctx),
-			"error",
-			err,
-		)
+		h.log.Error("content HTTP request failed", append([]zap.Field{
+			zap.Int("status", status),
+			zap.String("request_id", httpmiddleware.RequestID(ctx)),
+		}, logger.ErrorFields(err)...)...)
 	}
-	return problemFor(ctx, status, code, title, detail)
+	problem := problemFor(ctx, status, code, title, detail)
+	var exceeded *ratelimit.ExceededError
+	if errors.As(err, &exceeded) {
+		problem.RetryAfter = contentapi.NewOptString(strconv.Itoa(max(1, int(math.Ceil(exceeded.RetryAfter.Seconds())))))
+	}
+	return problem
 }
 
 func describeError(
@@ -78,18 +83,19 @@ func describeError(
 	err error,
 ) (int, contentapi.ProblemCode, string, string) {
 	var securityErr *ogenerrors.SecurityError
+	var exceeded *ratelimit.ExceededError
 	switch {
-	case errors.Is(err, auth.ErrIdentityUnavailable):
-		return http.StatusServiceUnavailable,
-			contentapi.ProblemCodeSERVICEUNAVAILABLE,
-			"Service unavailable",
-			"Identity is temporarily unavailable"
-	case errors.Is(err, auth.ErrForbidden):
+	case errors.As(err, &exceeded):
+		return http.StatusTooManyRequests,
+			contentapi.ProblemCodeTOOMANYREQUESTS,
+			"Too many requests",
+			"Request rate exceeded; retry later"
+	case errors.Is(err, errForbidden):
 		return http.StatusForbidden,
 			contentapi.ProblemCodeFORBIDDEN,
 			"Forbidden",
 			"CSRF validation failed"
-	case errors.Is(err, auth.ErrUnauthenticated):
+	case errors.Is(err, errUnauthenticated):
 		return http.StatusUnauthorized,
 			contentapi.ProblemCodeUNAUTHENTICATED,
 			"Unauthenticated",
@@ -165,13 +171,9 @@ func (h *Handler) decodeError(
 			"Request could not be decoded",
 		))
 	default:
-		h.log.ErrorContext(
-			ctx,
+		h.log.Error(
 			"content HTTP server error",
-			"request_id",
-			requestID(ctx),
-			"error",
-			err,
+			append([]zap.Field{zap.String("request_id", httpmiddleware.RequestID(ctx))}, logger.ErrorFields(err)...)...,
 		)
 		h.writeProblem(w, problemFor(ctx,
 			http.StatusInternalServerError,
@@ -220,24 +222,21 @@ func (h *Handler) writeProblem(
 	if err != nil {
 		h.log.Error(
 			"encode Content Problem failed",
-			"request_id",
-			p.XRequestID,
-			"error",
-			err,
+			append([]zap.Field{zap.String("request_id", p.XRequestID)}, logger.ErrorFields(err)...)...,
 		)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.Header().Set("X-Request-ID", p.XRequestID)
+	if retry, ok := p.RetryAfter.Get(); ok {
+		w.Header().Set("Retry-After", retry)
+	}
 	w.WriteHeader(p.StatusCode)
 	if _, err := w.Write(body); err != nil {
 		h.log.Error(
 			"write Content Problem failed",
-			"request_id",
-			p.XRequestID,
-			"error",
-			err,
+			append([]zap.Field{zap.String("request_id", p.XRequestID)}, logger.ErrorFields(err)...)...,
 		)
 	}
 }

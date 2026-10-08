@@ -14,7 +14,7 @@ func TestCaptureJourney(t *testing.T) {
 	f := newFixture(t)
 	url := "https://example.com/relay/" + uuid.New().String()
 	request := `{"source_type":"url","url":"` + url + `","keep":true}`
-	status, headers, body := f.call(f.server, http.MethodPost, "/api/v1/items", request, "application/json", "create")
+	status, headers, body := f.call(t, f.server, http.MethodPost, "/api/v1/items", request, "application/json", "create")
 	var receipt struct {
 		ItemID  uuid.UUID `json:"item_id"`
 		Outcome string    `json:"outcome"`
@@ -37,7 +37,7 @@ func TestCaptureJourney(t *testing.T) {
 		Scan(&capturedAt, &updatedAt); err != nil {
 		t.Fatal(err)
 	}
-	status, replayHeaders, replayBody := f.call(
+	status, replayHeaders, replayBody := f.call(t,
 		f.server, http.MethodPost, "/api/v1/items", request, "application/json", "create",
 	)
 	if status != http.StatusCreated || string(replayBody) != string(body) ||
@@ -54,13 +54,45 @@ func TestCaptureJourney(t *testing.T) {
 			capturedAt, replayCapturedAt, updatedAt, replayUpdatedAt)
 	}
 
-	status, _, foreignBody := f.call(f.foreign, http.MethodGet, path, "", "", "")
+	status, _, foreignBody := f.call(t, f.foreign, http.MethodGet, path, "", "", "")
 	if status != http.StatusNotFound {
 		t.Fatalf("foreign GET: %d %s", status, foreignBody)
 	}
-	status, _, missingBody := f.call(f.server, http.MethodGet, "/api/v1/items/"+uuid.New().String(), "", "", "")
+	status, _, missingBody := f.call(t, f.server, http.MethodGet, "/api/v1/items/"+uuid.New().String(), "", "", "")
 	if status != http.StatusNotFound {
 		t.Fatalf("missing GET: %d %s", status, missingBody)
+	}
+	for _, mutation := range []struct {
+		method    string
+		body      string
+		mediaType string
+	}{
+		{
+			method:    http.MethodPatch,
+			body:      `{"keep":false}`,
+			mediaType: "application/merge-patch+json",
+		},
+		{
+			method:    http.MethodDelete,
+			body:      "",
+			mediaType: "",
+		},
+	} {
+		mutationStatus, _, mutationBody := f.call(t, f.foreign, mutation.method, path, mutation.body, mutation.mediaType, "")
+		if mutationStatus != http.StatusNotFound {
+			t.Fatalf("foreign %s: %d %s", mutation.method, mutationStatus, mutationBody)
+		}
+	}
+
+	status, _, ownerBody := f.call(t, f.server, http.MethodGet, path, "", "", "")
+	var owned struct {
+		Keep bool `json:"keep"`
+	}
+	if err := json.Unmarshal(ownerBody, &owned); err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK || !owned.Keep {
+		t.Fatalf("foreign mutations changed owner Item: %d %s", status, ownerBody)
 	}
 	var foreignProblem, missingProblem struct {
 		Code string `json:"code"`
@@ -75,7 +107,7 @@ func TestCaptureJourney(t *testing.T) {
 		t.Fatalf("foreign and missing errors differ: %q, %q", foreignProblem.Code, missingProblem.Code)
 	}
 
-	status, _, body = f.call(
+	status, _, body = f.call(t,
 		f.server, http.MethodPatch, path, `{"review_status":"later"}`, "application/merge-patch+json", "",
 	)
 	if status != http.StatusOK {
@@ -111,15 +143,15 @@ func TestCaptureJourney(t *testing.T) {
 	} {
 		assertOnlyItem(t, f, surface, receipt.ItemID)
 	}
-	status, _, body = f.call(f.server, http.MethodDelete, path, "", "", "")
+	status, _, body = f.call(t, f.server, http.MethodDelete, path, "", "", "")
 	if status != http.StatusNoContent {
 		t.Fatalf("DELETE: %d %s", status, body)
 	}
-	status, _, body = f.call(f.server, http.MethodGet, path, "", "", "")
+	status, _, body = f.call(t, f.server, http.MethodGet, path, "", "", "")
 	if status != http.StatusNotFound {
 		t.Fatalf("GET after DELETE: %d %s", status, body)
 	}
-	status, _, body = f.call(f.server, http.MethodDelete, path, "", "", "")
+	status, _, body = f.call(t, f.server, http.MethodDelete, path, "", "", "")
 	if status != http.StatusNotFound {
 		t.Fatalf("repeated DELETE: %d %s", status, body)
 	}
@@ -140,7 +172,7 @@ func assertOnlyItem(
 	want uuid.UUID,
 ) {
 	t.Helper()
-	status, _, body := f.call(f.server, http.MethodGet, path, "", "", "")
+	status, _, body := f.call(t, f.server, http.MethodGet, path, "", "", "")
 	if status != http.StatusOK {
 		t.Fatalf("GET %s: %d %s", path, status, body)
 	}

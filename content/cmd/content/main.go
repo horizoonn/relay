@@ -2,49 +2,52 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/horizoonn/relay/platform/pkg/logger"
+
 	"github.com/horizoonn/relay/content/internal/app"
-	identityclient "github.com/horizoonn/relay/content/internal/client/identity"
 	"github.com/horizoonn/relay/content/internal/config"
 )
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	os.Exit(run())
 }
 
-func run() error {
+func run() (exitCode int) {
 	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("load Content config: %w", err)
+		log.Printf("load config: %v", err)
+		return 1
 	}
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	output, err := logger.New(cfg.Log)
+	if err != nil {
+		log.Printf("initialize logger: %v", err)
+		return 1
+	}
+
+	defer func() {
+		if syncErr := logger.Sync(output); syncErr != nil {
+			log.Printf("%v", syncErr)
+			exitCode = 1
+		}
+	}()
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	identity, err := identityclient.New(identityclient.Options{
-		Address:      cfg.Identity.Address,
-		ServiceToken: cfg.Identity.ServiceToken,
-		CAFile:       cfg.Identity.CAFile,
-		ServerName:   cfg.Identity.ServerName,
-		Timeout:      cfg.Identity.Timeout,
-	})
+
+	application, err := app.New(ctx, cfg, output)
 	if err != nil {
-		return fmt.Errorf("initialize Identity client: %w", err)
-	}
-	defer func() { _ = identity.Close() }()
-	application, err := app.New(ctx, cfg, log, identity)
-	if err != nil {
-		return fmt.Errorf("initialize Content: %w", err)
+		output.Error("initialize application", logger.ErrorFields(err)...)
+		return 1
 	}
 	if err := application.Run(ctx); err != nil {
-		return fmt.Errorf("run Content: %w", err)
+		output.Error("run application", logger.ErrorFields(err)...)
+		return 1
 	}
-	return nil
+	return 0
 }

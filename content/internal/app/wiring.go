@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
+	"go.uber.org/zap"
 
-	"github.com/horizoonn/relay/content/internal/auth"
 	"github.com/horizoonn/relay/content/internal/config"
 	contentrepo "github.com/horizoonn/relay/content/internal/repository/postgres"
 	contenthttp "github.com/horizoonn/relay/content/internal/transport/http/contentv1"
@@ -20,35 +20,41 @@ import (
 	"github.com/horizoonn/relay/content/internal/usecase/search"
 )
 
-type Identity interface {
-	auth.Authenticator
-	Check(context.Context) error
-}
-
 func New(
 	ctx context.Context,
 	cfg config.Config,
-	log *slog.Logger,
-	identity Identity,
-) (*App, error) {
+	log *zap.Logger,
+) (application *App, initErr error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate Content config: %w", err)
 	}
-	if log == nil || identity == nil {
-		return nil, errors.New("logger and Identity client are required")
+	if log == nil {
+		return nil, errors.New("logger is required")
 	}
-	pool, err := platformpostgres.NewPool(ctx, cfg.Postgres)
+	verifier, err := newAccessVerifier(cfg.Access)
+	if err != nil {
+		return nil, fmt.Errorf("initialize access verifier: %w", err)
+	}
+	pool, err := postgres.NewPool(ctx, cfg.Postgres)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Content PostgreSQL: %w", err)
+	}
+	client, limiter, err := newRedisLimiter(ctx, cfg.Redis, cfg.RateLimit, log)
+	if err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("initialize Content rate limiter: %w", err)
 	}
 	closePool := true
 	defer func() {
 		if closePool {
 			pool.Close()
+			if closeErr := client.Close(); closeErr != nil {
+				initErr = errors.Join(initErr, fmt.Errorf("close Redis after initialization failure: %w", closeErr))
+			}
 		}
 	}()
 
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 5*time.Second)
 	captureService := capture.NewService(repo, repo, tx)
 	itemService := item.NewService(repo, tx)
@@ -58,29 +64,31 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("initialize cursor codec: %w", err)
 	}
-	handler, err := contenthttp.NewHandler(captureService, itemService, collectionService, searchService, cursors, log)
+	handler, err := contenthttp.NewHandler(
+		captureService, itemService, collectionService, searchService, cursors, log,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Content HTTP handler: %w", err)
 	}
-	api, err := contenthttp.NewServer(handler, identity, cfg.HTTP.AllowedOrigin)
+	api, err := contenthttp.NewServer(handler, verifier, cfg.HTTP.AllowedOrigin, limiter)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Content HTTP server: %w", err)
 	}
 
 	a := &App{
-		log:             log.With("service", "content"),
+		log:             log,
 		pool:            pool,
-		identity:        identity,
+		redis:           client,
 		receipts:        repo,
 		shutdownTimeout: cfg.App.ShutdownTimeout,
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", a.health)
-	mux.HandleFunc("GET /readyz", a.readiness)
-	mux.Handle("/", api)
+	mux.HandleFunc("GET /healthz", contenthttp.Healthz)
+	mux.HandleFunc("GET /readyz", contenthttp.Readyz(a.checkReadiness))
+	mux.Handle("/", httpmiddleware.Deadline(api, 15*time.Second))
 	a.server = &http.Server{
 		Addr:              cfg.HTTP.Address,
-		Handler:           a.logRequests(mux),
+		Handler:           httpmiddleware.AccessLog(log, mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

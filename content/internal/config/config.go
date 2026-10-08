@@ -5,14 +5,18 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/logger"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
 )
 
 type Config struct {
-	App      AppConfig
-	HTTP     HTTPConfig
-	Postgres PostgresConfig
-	Identity IdentityConfig
+	Log       logger.Config
+	App       AppConfig
+	HTTP      HTTPConfig
+	Postgres  PostgresConfig
+	Access    AccessConfig
+	Redis     RedisConfig
+	RateLimit RateLimitConfig
 }
 
 type AppConfig struct {
@@ -25,18 +29,19 @@ type HTTPConfig struct {
 	CursorKey     string `env:"CURSOR_SIGNING_KEY,required,notEmpty"`
 }
 
-type PostgresConfig = platformpostgres.Config
+type PostgresConfig = postgres.Config
 
-type IdentityConfig struct {
-	Address      string        `env:"IDENTITY_ADDR,required,notEmpty"`
-	ServiceToken string        `env:"IDENTITY_SERVICE_TOKEN,required,notEmpty"`
-	CAFile       string        `env:"IDENTITY_CA_FILE"`
-	ServerName   string        `env:"IDENTITY_SERVER_NAME"`
-	Timeout      time.Duration `env:"IDENTITY_TIMEOUT" envDefault:"2s"`
+type AccessConfig struct {
+	PublicKeyFiles map[string]string `env:"ACCESS_PUBLIC_KEY_FILES,required,notEmpty" envSeparator:"," envKeyValSeparator:"="`
 }
 
 func Load() (Config, error) {
-	cfg, err := env.ParseAsWithOptions[Config](env.Options{
+	cfg := Config{
+		Log: logger.Config{
+			ServiceName: "content",
+		},
+	}
+	err := env.ParseWithOptions(&cfg, env.Options{
 		Prefix: "CONTENT_",
 	})
 	if err != nil {

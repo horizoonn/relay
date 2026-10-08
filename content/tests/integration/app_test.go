@@ -4,45 +4,25 @@ package integration
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
 	"io"
-	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 	"uuid"
 
+	"github.com/horizoonn/relay/platform/pkg/security/accessjwt"
+	"go.uber.org/zap"
+
 	"github.com/horizoonn/relay/content/internal/app"
-	"github.com/horizoonn/relay/content/internal/auth"
 	"github.com/horizoonn/relay/content/internal/config"
 )
-
-type rejectAuth struct{}
-
-func (rejectAuth) Introspect(context.Context, string) (uuid.UUID, error) {
-	return uuid.Nil(), auth.ErrUnauthenticated
-}
-
-func (rejectAuth) ValidateCSRF(context.Context, string, string) error {
-	return auth.ErrUnauthenticated
-}
-
-func (rejectAuth) Check(context.Context) error { return nil }
-
-type slowCheckAuth struct {
-	rejectAuth
-}
-
-func (slowCheckAuth) Check(ctx context.Context) error {
-	select {
-	case <-time.After(1100 * time.Millisecond):
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
 
 func TestAppStartupAndProbes(t *testing.T) {
 	if os.Getenv("RELAY_CONTENT_TEST_DATABASE_URL") == "" {
@@ -57,7 +37,35 @@ func TestAppStartupAndProbes(t *testing.T) {
 	if err != nil || port == 0 {
 		t.Fatal("PGPORT must be a valid PostgreSQL port")
 	}
+
+	public, private, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyFile := filepath.Join(t.TempDir(), "public.pem")
+	if writeErr := os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: der,
+	}), 0o600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
 	cfg := config.Config{
+		Redis: config.RedisConfig{
+			Address:        "127.0.0.1:1",
+			Timeout:        100 * time.Millisecond,
+			MaxConnections: 2,
+		},
+		RateLimit: config.RateLimitConfig{
+			Key:     strings.Repeat("r", 32),
+			Capture: "30/1m/10",
+			Write:   "60/1m/20",
+			Read:    "300/1m/60",
+			Search:  "60/1m/10",
+		},
 		App: config.AppConfig{
 			ShutdownTimeout: time.Second,
 		},
@@ -77,14 +85,11 @@ func TestAppStartupAndProbes(t *testing.T) {
 			MinConns:       0,
 			ConnectTimeout: time.Second,
 		},
-		Identity: config.IdentityConfig{
-			Address:      "identity:9090",
-			ServiceToken: "test-service-token",
-			Timeout:      2 * time.Second,
+		Access: config.AccessConfig{
+			PublicKeyFiles: map[string]string{"integration": keyFile},
 		},
 	}
-	application, err := app.New(context.Background(), cfg,
-		slog.New(slog.NewTextHandler(io.Discard, nil)), slowCheckAuth{})
+	application, err := app.New(context.Background(), cfg, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,11 +104,20 @@ func TestAppStartupAndProbes(t *testing.T) {
 	client := &http.Client{
 		Timeout: 3 * time.Second,
 	}
+	defer client.CloseIdleConnections()
 	for {
-		if address := application.Address(); address != "" {
-			response, err := client.Get("http://" + address + "/readyz")
-			if err == nil {
+		if address := application.HTTPAddress(); address != "" {
+			request, requestErr := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/readyz", nil)
+			if requestErr != nil {
+				t.Fatal(requestErr)
+			}
+			response, callErr := client.Do(request)
+			if callErr == nil {
+				_, readErr := io.Copy(io.Discard, response.Body)
 				_ = response.Body.Close()
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
 				if response.StatusCode == http.StatusOK {
 					break
 				}
@@ -113,30 +127,72 @@ func TestAppStartupAndProbes(t *testing.T) {
 			}
 		}
 		select {
-		case err := <-done:
-			t.Fatalf("Content stopped before readiness: %v", err)
+		case runErr := <-done:
+			t.Fatalf("Content stopped before readiness: %v", runErr)
 		case <-tick.C:
 		case <-deadline.C:
 			t.Fatal("Content did not become ready")
 		}
 	}
-	baseURL := "http://" + application.Address()
+	issuer, err := accessjwt.NewIssuer("integration", private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := issuer.Issue(uuid.NewV7(), uuid.NewV7(), [32]byte{1}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseURL := "http://" + application.HTTPAddress()
 	for _, tc := range []struct {
-		path string
-		want int
+		path   string
+		want   int
+		access bool
 	}{
-		{"/healthz", http.StatusOK},
-		{"/api/v1/items/recent", http.StatusUnauthorized},
+		{
+			path:   "/healthz",
+			want:   http.StatusOK,
+			access: false,
+		},
+		{
+			path:   "/readyz",
+			want:   http.StatusOK,
+			access: false,
+		},
+		{
+			path:   "/api/v1/items/recent",
+			want:   http.StatusUnauthorized,
+			access: false,
+		},
+		{
+			path:   "/api/v1/items/recent",
+			want:   http.StatusOK,
+			access: true,
+		},
 	} {
-		response, err := client.Get(baseURL + tc.path)
+		request, requestErr := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+tc.path, nil)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		if tc.access {
+			request.AddCookie(&http.Cookie{
+				Name:  "__Host-relay_access",
+				Value: token.Raw,
+			})
+		}
+		response, err := client.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
+		_, readErr := io.Copy(io.Discard, response.Body)
 		_ = response.Body.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
 		if response.StatusCode != tc.want {
 			t.Fatalf("GET %s status = %d, want %d", tc.path, response.StatusCode, tc.want)
 		}
 	}
+	client.CloseIdleConnections()
 	cancel()
 	shutdownDeadline := time.NewTimer(5 * time.Second)
 	defer shutdownDeadline.Stop()

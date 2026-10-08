@@ -3,6 +3,9 @@ package app
 import (
 	"context"
 	"time"
+
+	"github.com/horizoonn/relay/platform/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -35,7 +38,7 @@ func (a *App) cleanExpiredReceipts(ctx context.Context) {
 		deleted, err := a.receipts.DeleteExpiredReceipts(ctx, cutoff, receiptCleanupBatchSize)
 		if err != nil {
 			if ctx.Err() == nil {
-				a.log.ErrorContext(ctx, "delete expired Capture receipts", "error", err)
+				a.log.Error("delete expired Capture receipts", logger.ErrorFields(err)...)
 			}
 			return
 		}
@@ -45,6 +48,6 @@ func (a *App) cleanExpiredReceipts(ctx context.Context) {
 		}
 	}
 	if total > 0 {
-		a.log.InfoContext(ctx, "expired Capture receipts deleted", "count", total)
+		a.log.Info("expired Capture receipts deleted", zap.Int64("count", total))
 	}
 }

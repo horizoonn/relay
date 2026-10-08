@@ -24,10 +24,7 @@ func toAPIItem(item domain.Item) (contentapi.Item, error) {
 			Text: source.Text,
 		})
 	default:
-		return contentapi.Item{}, fmt.Errorf(
-			"unsupported item source type %q",
-			source.Type,
-		)
+		return contentapi.Item{}, fmt.Errorf("unsupported item source type %q", source.Type)
 	}
 	result := contentapi.Item{
 		ID:             contentapi.ItemID(item.ID()),
