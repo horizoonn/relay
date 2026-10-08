@@ -70,19 +70,19 @@ func (r *Repository) Search(
 		escaped+"%", "%"+escaped+"%", len([]rune(params.Query)) <= 2,
 		afterTier, afterAt, afterID, params.Limit+1)
 	if err != nil {
-		return search.Page{}, err
+		return search.Page{}, fmt.Errorf("query search items: %w", err)
 	}
 	defer rows.Close()
 	models := make([]model.Search, 0, params.Limit+1)
 	for rows.Next() {
 		var result model.Search
 		if err := result.Scan(rows); err != nil {
-			return search.Page{}, err
+			return search.Page{}, fmt.Errorf("scan search item: %w", err)
 		}
 		models = append(models, result)
 	}
 	if err := rows.Err(); err != nil {
-		return search.Page{}, err
+		return search.Page{}, fmt.Errorf("iterate search items: %w", err)
 	}
 	var next *search.Anchor
 	if len(models) > params.Limit {

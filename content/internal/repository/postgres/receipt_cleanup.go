@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -28,7 +29,7 @@ func (r *Repository) DeleteExpiredReceipts(
 	`
 	result, err := r.executor(ctx).Exec(ctx, query, before, limit)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("delete expired capture receipts: %w", err)
 	}
 	return result.RowsAffected(), nil
 }

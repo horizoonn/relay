@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -47,7 +48,7 @@ func (r *Repository) Claim(
 		return capture.IdempotencyRecord{}, true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return capture.IdempotencyRecord{}, false, err
+		return capture.IdempotencyRecord{}, false, fmt.Errorf("claim capture receipt: %w", err)
 	}
 	const findQuery = `
 		SELECT fingerprint_version, request_fingerprint, item_id, outcome
@@ -59,11 +60,11 @@ func (r *Repository) Claim(
 	row = r.executor(ctx).QueryRow(ctx, findQuery, params.OwnerID, params.Key)
 	var storedRecord model.Idempotency
 	if scanErr := storedRecord.Scan(row); scanErr != nil {
-		return capture.IdempotencyRecord{}, false, scanErr
+		return capture.IdempotencyRecord{}, false, fmt.Errorf("load capture receipt: %w", scanErr)
 	}
 	record, err := storedRecord.ToRecord()
 	if err != nil {
-		return capture.IdempotencyRecord{}, false, err
+		return capture.IdempotencyRecord{}, false, fmt.Errorf("restore capture receipt: %w", err)
 	}
 	return record, false, nil
 }

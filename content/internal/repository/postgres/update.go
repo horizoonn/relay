@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -22,7 +23,7 @@ func (r *Repository) Update(ctx context.Context, item domain.Item) error {
 
 	storedItem, err := model.ItemFromDomain(item)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare item update: %w", err)
 	}
 	tag, err := r.executor(ctx).Exec(ctx,
 		query,
@@ -36,7 +37,7 @@ func (r *Repository) Update(ctx context.Context, item domain.Item) error {
 		storedItem.LaterAt,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("update item: %w", err)
 	}
 	if tag.RowsAffected() != 1 {
 		return pgx.ErrNoRows

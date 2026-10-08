@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"uuid"
 
 	"github.com/jackc/pgx/v5"
@@ -31,7 +32,7 @@ func (r *Repository) Create(
 
 	storedItem, err := model.ItemFromDomain(item)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("prepare item insert: %w", err)
 	}
 	row := r.executor(ctx).QueryRow(ctx,
 		query,
@@ -56,7 +57,7 @@ func (r *Repository) Create(
 		return false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("execute item insert: %w", err)
 	}
 	return true, nil
 }

@@ -38,7 +38,7 @@ func (r *Repository) FindByNormalizedURL(
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Item{}, capture.ErrURLItemNotFound
 		}
-		return domain.Item{}, err
+		return domain.Item{}, fmt.Errorf("find URL item: %w", err)
 	}
 	item, err := storedItem.ToDomain()
 	if err != nil {

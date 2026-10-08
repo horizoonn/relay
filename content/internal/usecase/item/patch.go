@@ -41,7 +41,7 @@ func (s *Service) Patch(
 		return transactionErr
 	})
 	if err != nil {
-		return domain.Item{}, err
+		return domain.Item{}, fmt.Errorf("patch item transaction: %w", err)
 	}
 	return result, nil
 }

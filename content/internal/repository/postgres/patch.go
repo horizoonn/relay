@@ -28,7 +28,7 @@ func (r *Repository) Patch(
 	}
 	storedItem, err := model.ItemFromDomain(item)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare item patch: %w", err)
 	}
 	args := []any{storedItem.OwnerID, storedItem.ID, storedItem.UpdatedAt}
 	sets := []string{"updated_at = $3"}
@@ -49,7 +49,7 @@ func (r *Repository) Patch(
 	query := prefix + strings.Join(sets, ", ") + suffix
 	tag, err := r.executor(ctx).Exec(ctx, query, args...)
 	if err != nil {
-		return err
+		return fmt.Errorf("patch item: %w", err)
 	}
 	if tag.RowsAffected() != 1 {
 		return pgx.ErrNoRows
