@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,7 +18,6 @@ func NewTxManager(pool *pgxpool.Pool) *TxManager {
 	}
 }
 
-// WithinTransaction joins an existing transaction from this manager or starts one.
 func (m *TxManager) WithinTransaction(
 	ctx context.Context,
 	fn func(context.Context) error,
@@ -25,9 +25,13 @@ func (m *TxManager) WithinTransaction(
 	if m.txFromContext(ctx) != nil {
 		return fn(ctx)
 	}
-	return pgx.BeginFunc(ctx, m.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, m.pool, func(tx pgx.Tx) error {
 		return fn(m.contextWithTx(ctx, tx))
 	})
+	if err != nil {
+		return fmt.Errorf("execute PostgreSQL transaction: %w", err)
+	}
+	return nil
 }
 
 func (m *TxManager) Executor(ctx context.Context) Executor {

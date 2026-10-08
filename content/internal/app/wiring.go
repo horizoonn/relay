@@ -5,14 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/url"
-	"strconv"
 	"time"
 
 	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/horizoonn/relay/content/internal/auth"
 	"github.com/horizoonn/relay/content/internal/config"
@@ -41,7 +37,7 @@ func New(
 	if log == nil || identity == nil {
 		return nil, errors.New("logger and Identity client are required")
 	}
-	pool, err := newPostgresPool(ctx, cfg.Postgres)
+	pool, err := platformpostgres.NewPool(ctx, cfg.Postgres)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Content PostgreSQL: %w", err)
 	}
@@ -92,48 +88,4 @@ func New(
 	}
 	closePool = false
 	return a, nil
-}
-
-func newPostgresPool(
-	ctx context.Context,
-	cfg config.PostgresConfig,
-) (*pgxpool.Pool, error) {
-	uri := url.URL{
-		Scheme: "postgres",
-		User:   url.UserPassword(cfg.User, cfg.Password),
-		Host:   net.JoinHostPort(cfg.Host, strconv.Itoa(int(cfg.Port))),
-		Path:   "/" + cfg.Database,
-	}
-	query := uri.Query()
-	query.Set("sslmode", cfg.SSLMode)
-	uri.RawQuery = query.Encode()
-	poolConfig, err := pgxpool.ParseConfig(uri.String())
-	if err != nil {
-		return nil, fmt.Errorf("parse PostgreSQL settings: %w", err)
-	}
-	poolConfig.MaxConns = cfg.MaxConns
-	poolConfig.MinConns = cfg.MinConns
-	poolConfig.ConnConfig.ConnectTimeout = cfg.ConnectTimeout
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		return nil, err
-	}
-	for attempt := 0; attempt < 3; attempt++ {
-		pingCtx, cancel := context.WithTimeout(ctx, cfg.ConnectTimeout)
-		err = pool.Ping(pingCtx)
-		cancel()
-		if err == nil {
-			return pool, nil
-		}
-		if attempt < 2 {
-			select {
-			case <-ctx.Done():
-				pool.Close()
-				return nil, ctx.Err()
-			case <-time.After(250 * time.Millisecond):
-			}
-		}
-	}
-	pool.Close()
-	return nil, fmt.Errorf("ping PostgreSQL after three attempts: %w", err)
 }

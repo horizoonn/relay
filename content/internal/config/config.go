@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
+	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
 )
 
 type Config struct {
@@ -24,17 +25,7 @@ type HTTPConfig struct {
 	CursorKey     string `env:"CURSOR_SIGNING_KEY,required,notEmpty"`
 }
 
-type PostgresConfig struct {
-	Host           string        `env:"DB_HOST" envDefault:"postgres"`
-	Port           uint16        `env:"DB_PORT" envDefault:"5432"`
-	Database       string        `env:"DB,required,notEmpty"`
-	User           string        `env:"APP_USER,required,notEmpty"`
-	Password       string        `env:"APP_PASSWORD,required,notEmpty"`
-	SSLMode        string        `env:"DB_SSLMODE" envDefault:"disable"`
-	MaxConns       int32         `env:"DB_MAX_CONNS" envDefault:"10"`
-	MinConns       int32         `env:"DB_MIN_CONNS" envDefault:"2"`
-	ConnectTimeout time.Duration `env:"DB_CONNECT_TIMEOUT" envDefault:"5s"`
-}
+type PostgresConfig = platformpostgres.Config
 
 type IdentityConfig struct {
 	Address      string        `env:"IDENTITY_ADDR,required,notEmpty"`

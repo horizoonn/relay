@@ -16,7 +16,7 @@ func (c Config) Validate() error {
 	if c.App.ShutdownTimeout <= 0 || c.App.ShutdownTimeout > 2*time.Minute {
 		return errors.New("CONTENT_SHUTDOWN_TIMEOUT must be positive and at most 2m")
 	}
-	if err := c.Postgres.validate(); err != nil {
+	if err := c.Postgres.Validate(); err != nil {
 		return err
 	}
 	return c.Identity.validate()
@@ -39,28 +39,6 @@ func (c HTTPConfig) validate() error {
 	}
 	if len(c.CursorKey) < 32 {
 		return errors.New("CONTENT_CURSOR_SIGNING_KEY must contain at least 32 bytes")
-	}
-	return nil
-}
-
-func (c PostgresConfig) validate() error {
-	if c.Host == "" || c.Database == "" || c.User == "" || c.Password == "" {
-		return errors.New("content PostgreSQL connection fields must not be empty")
-	}
-	if c.Port == 0 {
-		return errors.New("CONTENT_DB_PORT must be positive")
-	}
-	switch c.SSLMode {
-	case "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
-	default:
-		return errors.New("CONTENT_DB_SSLMODE is invalid")
-	}
-	if c.ConnectTimeout <= 0 || c.ConnectTimeout > 30*time.Second {
-		return errors.New("CONTENT_DB_CONNECT_TIMEOUT must be positive and at most 30s")
-	}
-	if c.MaxConns <= 0 || c.MaxConns > 100 ||
-		c.MinConns < 0 || c.MinConns > c.MaxConns {
-		return errors.New("CONTENT_DB_MIN_CONNS and CONTENT_DB_MAX_CONNS must form a valid range with maximum 100")
 	}
 	return nil
 }
