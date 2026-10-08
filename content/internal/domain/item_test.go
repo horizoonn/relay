@@ -27,7 +27,7 @@ func newItem(t *testing.T) domain.Item {
 	return item
 }
 
-func TestRestoreItemValidatesAndOwnsState(t *testing.T) {
+func TestRestoreItemOwnsState(t *testing.T) {
 	t.Parallel()
 	original := newItem(t)
 	keptAt := original.CreatedAt().Add(time.Hour)
@@ -59,9 +59,42 @@ func TestRestoreItemValidatesAndOwnsState(t *testing.T) {
 	if got, ok := item.LaterAt(); !ok || !got.Equal(original.CreatedAt().Add(2*time.Hour)) {
 		t.Fatal("restored Later timestamp changed after its input was modified")
 	}
-	state.ID = uuid.Nil()
-	if _, err := domain.RestoreItem(state); !errors.Is(err, domain.ErrInvalidItem) {
-		t.Fatalf("invalid state error = %v, want %v", err, domain.ErrInvalidItem)
+}
+
+func TestRestoreItemRejectsInvalidState(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name       string
+		invalidate func(*domain.ItemState)
+	}{
+		{"missing ID", func(s *domain.ItemState) { s.ID = uuid.Nil() }},
+		{"missing owner", func(s *domain.ItemState) { s.OwnerID = uuid.Nil() }},
+		{"missing source", func(s *domain.ItemState) { s.Source = domain.Source{} }},
+		{"invalid review status", func(s *domain.ItemState) { s.ReviewStatus = "invalid" }},
+		{"missing creation time", func(s *domain.ItemState) { s.CreatedAt = time.Time{} }},
+		{"missing update time", func(s *domain.ItemState) { s.UpdatedAt = time.Time{} }},
+		{"missing capture time", func(s *domain.ItemState) { s.LastCapturedAt = time.Time{} }},
+		{"zero Keep time", func(s *domain.ItemState) { s.KeptAt = new(time.Time) }},
+		{"Later without time", func(s *domain.ItemState) { s.ReviewStatus = domain.ReviewLater }},
+		{"Later time without status", func(s *domain.ItemState) { at := s.CreatedAt; s.LaterAt = &at }},
+		{"blank title", func(s *domain.ItemState) { s.DisplayTitle = " " }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			item := newItem(t)
+			state := domain.ItemState{
+				ID: item.ID(), OwnerID: item.OwnerID(), Source: item.Source(),
+				ReviewStatus: domain.ReviewNone, CreatedAt: item.CreatedAt(), UpdatedAt: item.UpdatedAt(), LastCapturedAt: item.LastCapturedAt(),
+			}
+			tt.invalidate(&state)
+			got, err := domain.RestoreItem(state)
+			if !errors.Is(err, domain.ErrInvalidItem) {
+				t.Fatalf("RestoreItem() error=%v; want ErrInvalidItem", err)
+			}
+			if got != (domain.Item{}) {
+				t.Fatal("invalid state returned a usable Item")
+			}
+		})
 	}
 }
 

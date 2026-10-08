@@ -8,6 +8,7 @@ import (
 	"uuid"
 
 	"github.com/horizoonn/relay/content/internal/usecase/collection"
+	"github.com/horizoonn/relay/content/internal/usecase/search"
 )
 
 func TestCollectionCursorInvalid(t *testing.T) {
@@ -68,4 +69,49 @@ func TestCollectionCursorInvalid(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCursorRoundTripPreservesMicroseconds(t *testing.T) {
+	t.Parallel()
+	codec, err := NewCursorCodec([]byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, id := uuid.New(), uuid.New()
+	at := time.Date(2026, time.October, 5, 12, 0, 0, 123456000, time.UTC)
+	for _, surface := range []string{"recent", "library", "later"} {
+		t.Run(surface, func(t *testing.T) {
+			t.Parallel()
+			anchor := collection.Anchor{At: at, ID: id}
+			raw, err := codec.EncodeCollection(owner, surface, anchor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := codec.DecodeCollection(raw, owner, surface)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.ID != anchor.ID || !got.At.Equal(anchor.At) {
+				t.Fatalf("round trip: got=%+v want=%+v", got, anchor)
+			}
+		})
+	}
+	t.Run("search", func(t *testing.T) {
+		t.Parallel()
+		anchor := search.Anchor{Tier: search.MatchTitleExact, LastCapturedAt: at, ID: id}
+		raw, err := codec.EncodeSearch(owner, "alpha", anchor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := codec.DecodeSearch(raw, owner, "alpha")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Tier != anchor.Tier || got.ID != anchor.ID || !got.LastCapturedAt.Equal(anchor.LastCapturedAt) {
+			t.Fatalf("round trip: got=%+v want=%+v", got, anchor)
+		}
+		if _, err := codec.DecodeSearch(raw, owner, "beta"); !errors.Is(err, ErrInvalidCursor) {
+			t.Fatalf("different query error=%v", err)
+		}
+	})
 }
