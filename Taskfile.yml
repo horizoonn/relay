@@ -60,7 +60,25 @@ vars:
   MODULES: '{{env "MODULES" | default "content delivery processing identity platform shared"}}'
   SERVICES: '{{env "SERVICES" | default "core,content,delivery,processing,identity"}}'
 
+  MOCKERY_VERSION: "v3.7.4"
+
+  MOCKERY: "{{.BIN_DIR}}/mockery"
+
 tasks:
+  mocks:generate:
+    desc: Generate selected Identity unit-test mocks
+    deps: [tools:mockery]
+    cmds:
+      - cd identity && GOWORK=off "{{.MOCKERY}}" --config ../.mockery.yml
+
+  tools:mockery:
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.MOCKERY}}" ] || [ "$("{{.MOCKERY}}" version)" != "{{.MOCKERY_VERSION}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install github.com/vektra/mockery/v3@{{.MOCKERY_VERSION}}
+        fi
+
   default:
     desc: Show available tasks
     cmds:
@@ -131,6 +149,7 @@ tasks:
     desc: Format all Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         tool_ready=0
@@ -155,6 +174,7 @@ tasks:
     desc: Lint all Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         ERR=0
@@ -183,6 +203,7 @@ tasks:
     desc: Run go vet in all non-empty Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         for mod in {{.MODULES}}; do
@@ -198,6 +219,7 @@ tasks:
     desc: Run unit tests
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         ERR=0
@@ -233,6 +255,7 @@ tasks:
     desc: Check formatting without changing files
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         tool_ready=0
@@ -255,6 +278,7 @@ tasks:
     desc: Build all non-empty Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         for mod in {{.MODULES}}; do
@@ -270,6 +294,7 @@ tasks:
     desc: Run race-enabled tests in non-empty Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         for mod in {{.MODULES}}; do
@@ -345,6 +370,7 @@ tasks:
     desc: Run go mod tidy for all modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
 
@@ -360,6 +386,7 @@ tasks:
     desc: Check whether Go module metadata is tidy
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         for mod in {{.MODULES}}; do
