@@ -1,0 +1,45 @@
+post:
+  operationId: Register
+  summary: Register an account
+  description: |
+    Creates an account and requests an email confirmation. Login requires a verified
+    email; registration does not start a session. Passwords must contain 15 to 128
+    Unicode code points, without composition rules.
+  tags:
+    - Authentication
+  parameters:
+    - $ref: ../components/parameters/origin.yaml
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../components/schemas/credentials.yaml
+  responses:
+    '201':
+      description: Account created.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/registered_user.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '403':
+      $ref: ../components/responses/problem.yaml
+    '409':
+      $ref: ../components/responses/problem.yaml
+    '413':
+      $ref: ../components/responses/problem.yaml
+    '415':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

@@ -1,0 +1,62 @@
+openapi: 3.0.3
+
+info:
+  title: Relay Identity API
+  version: 1.0.0
+  description: |
+    Account registration, email verification, password recovery, and browser sessions.
+
+    Mutations require the exact Relay HTTPS Origin. JSON bodies are limited to 4 KiB;
+    refresh, logout, and session revocation accept no body. Responses are not cached.
+
+    Access, refresh, and CSRF tokens use cookies, never JSON responses. Failed requests
+    leave cookies unchanged. Duplicate authentication cookies return INVALID_REQUEST.
+    Access tokens expire within five minutes; other services may accept an issued
+    token until expiry even after its session is revoked.
+
+    Rate limits return 429 RATE_LIMITED with Retry-After. Temporary unavailability
+    returns 503 SERVICE_UNAVAILABLE.
+
+servers:
+  - url: /
+
+tags:
+  - name: Authentication
+    description: Manage accounts and browser sessions.
+
+security: []
+
+x-ogen:
+  target: ./shared/pkg/openapi/identity/v1
+  package: identity_v1
+  clean: true
+
+paths:
+  /api/v1/auth/email/verification-requests:
+    $ref: ./paths/email_verification_requests.yaml
+  /api/v1/auth/email/verification:
+    $ref: ./paths/email_verification.yaml
+  /api/v1/auth/password/reset-requests:
+    $ref: ./paths/password_reset_requests.yaml
+  /api/v1/auth/password/reset:
+    $ref: ./paths/password_reset.yaml
+  /api/v1/auth/register:
+    $ref: ./paths/register.yaml
+  /api/v1/auth/login:
+    $ref: ./paths/login.yaml
+  /api/v1/auth/session:
+    $ref: ./paths/session.yaml
+  /api/v1/auth/sessions:
+    $ref: ./paths/sessions.yaml
+  /api/v1/auth/sessions/{session_id}:
+    $ref: ./paths/session_by_id.yaml
+  /api/v1/auth/refresh:
+    $ref: ./paths/refresh.yaml
+
+components:
+  securitySchemes:
+    AccessCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-relay_access
+      description: Signed access token; Identity also checks the current account and session.

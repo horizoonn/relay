@@ -1,0 +1,51 @@
+post:
+  operationId: Refresh
+  summary: Refresh the current session
+  description: |
+    Uses the refresh cookie and matching CSRF cookie/header; no valid access token
+    is needed. Rotates refresh without changing CSRF or session expiry.
+    Reuse within ten seconds returns 409 REFRESH_CONFLICT; later reuse revokes the
+    session and returns 401 UNAUTHENTICATED. Serialize refresh across tabs;
+    losing a successful response may require a new login.
+  tags:
+    - Authentication
+  parameters:
+    - $ref: ../components/parameters/origin.yaml
+    - $ref: ../components/parameters/refresh_cookie.yaml
+    - $ref: ../components/parameters/csrf_cookie.yaml
+    - $ref: ../components/parameters/csrf_header.yaml
+  responses:
+    '200':
+      description: Access and refresh renewed; CSRF and session expiry unchanged.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+        Set-Cookie:
+          required: true
+          description: Three separate cookie headers with the login paths and flags.
+          schema:
+            type: array
+            minItems: 3
+            maxItems: 3
+            items:
+              type: string
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/login_session.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '403':
+      $ref: ../components/responses/problem.yaml
+    '409':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

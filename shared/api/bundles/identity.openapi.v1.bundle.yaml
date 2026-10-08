@@ -1,0 +1,864 @@
+openapi: 3.0.3
+info:
+  title: Relay Identity API
+  version: 1.0.0
+  description: |
+    Account registration, email verification, password recovery, and browser sessions.
+
+    Mutations require the exact Relay HTTPS Origin. JSON bodies are limited to 4 KiB;
+    refresh, logout, and session revocation accept no body. Responses are not cached.
+
+    Access, refresh, and CSRF tokens use cookies, never JSON responses. Failed requests
+    leave cookies unchanged. Duplicate authentication cookies return INVALID_REQUEST.
+    Access tokens expire within five minutes; other services may accept an issued
+    token until expiry even after its session is revoked.
+
+    Rate limits return 429 RATE_LIMITED with Retry-After. Temporary unavailability
+    returns 503 SERVICE_UNAVAILABLE.
+servers:
+  - url: /
+security: []
+tags:
+  - name: Authentication
+    description: Manage accounts and browser sessions.
+paths:
+  /api/v1/auth/email/verification-requests:
+    post:
+      operationId: RequestEmailVerification
+      summary: Request email verification
+      description: |
+        Requests a confirmation link by email. Delivery is asynchronous;
+        the response does not reveal whether the account exists.
+      tags:
+        - Authentication
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/email_request'
+      responses:
+        '202':
+          description: Request accepted.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+        '400':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '413':
+          $ref: '#/components/responses/problem'
+        '415':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/email/verification:
+    post:
+      operationId: VerifyEmail
+      summary: Verify an email
+      description: |
+        Confirms the account email with a one-time token. Invalid, expired,
+        or used tokens return INVALID_TOKEN.
+      tags:
+        - Authentication
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/account_token'
+      responses:
+        '204':
+          description: Email verified.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+        '400':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '413':
+          $ref: '#/components/responses/problem'
+        '415':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/password/reset-requests:
+    post:
+      operationId: RequestPasswordReset
+      summary: Request a password reset
+      description: |
+        Requests a password reset link by email. Delivery is asynchronous;
+        the response does not reveal whether the account exists.
+      tags:
+        - Authentication
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/email_request'
+      responses:
+        '202':
+          description: Request accepted.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+        '400':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '413':
+          $ref: '#/components/responses/problem'
+        '415':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/password/reset:
+    post:
+      operationId: ResetPassword
+      summary: Reset the password
+      description: |
+        Replaces the password using a one-time token. Also confirms the email,
+        revokes all sessions, and invalidates other reset tokens. Invalid, expired,
+        or used tokens return INVALID_TOKEN. Clears browser cookies after success;
+        log in with the new password.
+      tags:
+        - Authentication
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/password_reset'
+      responses:
+        '204':
+          description: Password reset and sessions revoked.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+            Set-Cookie:
+              required: true
+              description: Clears the three browser cookies after a successful reset.
+              schema:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  type: string
+        '400':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '413':
+          $ref: '#/components/responses/problem'
+        '415':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/register:
+    post:
+      operationId: Register
+      summary: Register an account
+      description: |
+        Creates an account and requests an email confirmation. Login requires a verified
+        email; registration does not start a session. Passwords must contain 15 to 128
+        Unicode code points, without composition rules.
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/credentials'
+      responses:
+        '201':
+          description: Account created.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/registered_user'
+        '400':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '409':
+          $ref: '#/components/responses/problem'
+        '413':
+          $ref: '#/components/responses/problem'
+        '415':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/login:
+    post:
+      operationId: Login
+      summary: Log in with a password
+      description: |
+        Creates a new session. Unknown or disabled accounts and incorrect passwords
+        return INVALID_CREDENTIALS. A correct password for an unverified email returns
+        403 EMAIL_NOT_VERIFIED.
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/credentials'
+      responses:
+        '200':
+          description: Session created and browser cookies set.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+            Set-Cookie:
+              required: true
+              description: |
+                Three separate headers; cookies are Secure, host-only, and SameSite=Lax.
+                __Host-relay_access: HttpOnly, Path=/, expires with the access token.
+                __Secure-relay_refresh: HttpOnly, Path=/api/v1/auth, expires with session.
+                __Host-relay_csrf: readable by JavaScript, Path=/, expires with session.
+              schema:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/login_session'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '413':
+          $ref: '#/components/responses/problem'
+        '415':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/session:
+    get:
+      operationId: GetCurrentSession
+      summary: Get the current session
+      description: |
+        Returns the account and session for the access cookie. Invalid access or an
+        inactive account/session returns UNAUTHENTICATED. No Origin or CSRF is needed.
+        Does not renew tokens, update activity, or change cookies.
+      tags:
+        - Authentication
+      security:
+        - AccessCookie: []
+      responses:
+        '200':
+          description: Current account and session.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/current_session'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+    delete:
+      operationId: Logout
+      summary: Log out
+      description: |
+        Revokes the session identified by the refresh cookie; no valid access token
+        is needed. A supplied refresh cookie requires matching session-bound CSRF,
+        even if it was already rotated. Missing or invalid refresh still clears
+        browser cookies after success.
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/origin'
+        - $ref: '#/components/parameters/refresh_cookie'
+        - $ref: '#/components/parameters/csrf_cookie'
+        - $ref: '#/components/parameters/csrf_header'
+      responses:
+        '204':
+          description: Session revoked or absent; browser cookies cleared.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+            Set-Cookie:
+              required: true
+              description: Three cookie deletions with original paths and flags, Max-Age=0, and past expiry.
+              schema:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  type: string
+        '400':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/sessions:
+    get:
+      operationId: ListSessions
+      summary: List active sessions
+      description: |
+        Requires an active calling session. Lists own active sessions by created_at
+        and session_id descending. Pages are not snapshots; reads do not update
+        activity or cookies and require no Origin or CSRF.
+      tags:
+        - Authentication
+      security:
+        - AccessCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+      responses:
+        '200':
+          description: Page of own active sessions.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/session_page'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+    delete:
+      operationId: RevokeAllSessions
+      summary: Revoke all sessions
+      description: |
+        Revokes all active sessions, including the current one. Requires an active
+        caller and matching CSRF cookie/header. Clears cookies after success;
+        repeating with the revoked session returns 401. A later login can create
+        a new session.
+      tags:
+        - Authentication
+      security:
+        - AccessCookie: []
+      parameters:
+        - $ref: '#/components/parameters/origin'
+        - $ref: '#/components/parameters/csrf_cookie'
+        - $ref: '#/components/parameters/csrf_header'
+      responses:
+        '204':
+          description: All active sessions revoked; browser cookies cleared.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+            Set-Cookie:
+              required: true
+              description: Three cookie deletions with the original paths and flags.
+              schema:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  type: string
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/sessions/{session_id}:
+    delete:
+      operationId: RevokeSession
+      summary: Revoke a session
+      description: |
+        Requires an active calling session and matching CSRF cookie/header. Missing
+        or foreign sessions return SESSION_NOT_FOUND; an owned inactive target
+        returns 204. Revoking the current session clears browser cookies;
+        revoking another session leaves them unchanged.
+      tags:
+        - Authentication
+      security:
+        - AccessCookie: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/origin'
+        - $ref: '#/components/parameters/csrf_cookie'
+        - $ref: '#/components/parameters/csrf_header'
+      responses:
+        '204':
+          description: Session revoked or already inactive.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+            Set-Cookie:
+              description: Three cookie deletions when revoking the current session.
+              schema:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  type: string
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '404':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+  /api/v1/auth/refresh:
+    post:
+      operationId: Refresh
+      summary: Refresh the current session
+      description: |
+        Uses the refresh cookie and matching CSRF cookie/header; no valid access token
+        is needed. Rotates refresh without changing CSRF or session expiry.
+        Reuse within ten seconds returns 409 REFRESH_CONFLICT; later reuse revokes the
+        session and returns 401 UNAUTHENTICATED. Serialize refresh across tabs;
+        losing a successful response may require a new login.
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/origin'
+        - $ref: '#/components/parameters/refresh_cookie'
+        - $ref: '#/components/parameters/csrf_cookie'
+        - $ref: '#/components/parameters/csrf_header'
+      responses:
+        '200':
+          description: Access and refresh renewed; CSRF and session expiry unchanged.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/x_request_id'
+            Set-Cookie:
+              required: true
+              description: Three separate cookie headers with the login paths and flags.
+              schema:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/login_session'
+        '400':
+          $ref: '#/components/responses/problem'
+        '401':
+          $ref: '#/components/responses/problem'
+        '403':
+          $ref: '#/components/responses/problem'
+        '409':
+          $ref: '#/components/responses/problem'
+        '429':
+          $ref: '#/components/responses/problem'
+        '500':
+          $ref: '#/components/responses/problem'
+        '503':
+          $ref: '#/components/responses/problem'
+        default:
+          $ref: '#/components/responses/problem'
+components:
+  securitySchemes:
+    AccessCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-relay_access
+      description: Signed access token; Identity also checks the current account and session.
+  parameters:
+    origin:
+      name: Origin
+      in: header
+      required: true
+      description: Must exactly match the Relay HTTPS origin.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+    refresh_cookie:
+      name: __Secure-relay_refresh
+      in: cookie
+      required: false
+      description: Refresh credential. Required for refresh; logout accepts a missing or invalid value.
+      schema:
+        type: string
+        maxLength: 128
+    csrf_cookie:
+      name: __Host-relay_csrf
+      in: cookie
+      required: false
+      description: Session-bound CSRF value; must match X-Csrf-Token. Required for revocation and whenever a refresh cookie is supplied.
+      schema:
+        type: string
+        maxLength: 128
+    csrf_header:
+      name: X-Csrf-Token
+      in: header
+      required: false
+      description: Must match the CSRF cookie. Required for revocation and whenever a refresh cookie is supplied.
+      schema:
+        type: string
+        maxLength: 128
+  schemas:
+    email_request:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+    problem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - status
+        - code
+        - detail
+        - request_id
+      properties:
+        type:
+          type: string
+          format: uri
+          example: urn:relay:problem:invalid-request
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type: string
+          enum:
+            - EMAIL_NOT_VERIFIED
+            - INVALID_TOKEN
+            - INVALID_REQUEST
+            - INVALID_CREDENTIALS
+            - UNAUTHENTICATED
+            - REFRESH_CONFLICT
+            - REGISTRATION_CONFLICT
+            - SESSION_NOT_FOUND
+            - FORBIDDEN
+            - ROUTE_NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - PAYLOAD_TOO_LARGE
+            - UNSUPPORTED_MEDIA_TYPE
+            - RATE_LIMITED
+            - SERVICE_UNAVAILABLE
+            - INTERNAL_ERROR
+        detail:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: Human-readable diagnostic without credentials; use code for client logic.
+        request_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Equal to the response X-Request-Id header.
+    account_token:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]+$
+          description: One-time email token. Send in the JSON body, never in a query string or logs.
+    password_reset:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]+$
+        password:
+          type: string
+          minLength: 15
+          maxLength: 128
+          description: New password with 15 to 128 Unicode code points, without composition rules.
+    credentials:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+          description: Email address; surrounding whitespace is trimmed and the domain is lowercased.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Used exactly as supplied, including whitespace.
+    registered_user:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+          format: uuid
+    login_session:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - session_id
+        - access_expires_at
+        - session_expires_at
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        access_expires_at:
+          type: string
+          format: date-time
+          description: Access token expiry. Refresh before this time.
+        session_expires_at:
+          type: string
+          format: date-time
+          description: |
+            Session and refresh expiry, up to 30 days after login.
+            Rounded down to whole seconds.
+    current_session:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - email
+        - email_verified
+        - session_id
+        - authenticated_at
+        - access_expires_at
+        - session_expires_at
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          description: Account email; email_verified indicates confirmation.
+        email_verified:
+          type: boolean
+        session_id:
+          type: string
+          format: uuid
+        authenticated_at:
+          type: string
+          format: date-time
+        access_expires_at:
+          type: string
+          format: date-time
+          description: Access token expiry; unchanged by this request.
+        session_expires_at:
+          type: string
+          format: date-time
+          description: Absolute session expiry, rounded down to whole seconds.
+    session_info:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - created_at
+        - authenticated_at
+        - last_seen_at
+        - expires_at
+        - is_current
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        authenticated_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+          description: Time of creation or last refresh; Content activity is not tracked.
+        expires_at:
+          type: string
+          format: date-time
+        is_current:
+          type: boolean
+          description: True for the session making this request.
+    session_page:
+      type: object
+      additionalProperties: false
+      required:
+        - sessions
+      properties:
+        sessions:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/session_info'
+        next_cursor:
+          type: string
+          maxLength: 2048
+          description: Continuation cursor for this account; omitted on the last page.
+  headers:
+    x_request_id:
+      description: Correlation identifier assigned to the request.
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+  responses:
+    problem:
+      description: Request failed. The HTTP status and stable Relay code identify the failure.
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/x_request_id'
+        Retry-After:
+          description: Minimum seconds before retrying a rate-limited request or a busy password operation.
+          schema:
+            type: string
+            pattern: ^[1-9][0-9]*$
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/problem'
+x-ogen:
+  target: ./shared/pkg/openapi/identity/v1
+  package: identity_v1
+  clean: true

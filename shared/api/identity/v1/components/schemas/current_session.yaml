@@ -1,0 +1,33 @@
+type: object
+additionalProperties: false
+required:
+  - user_id
+  - email
+  - email_verified
+  - session_id
+  - authenticated_at
+  - access_expires_at
+  - session_expires_at
+properties:
+  user_id:
+    type: string
+    format: uuid
+  email:
+    type: string
+    description: Account email; email_verified indicates confirmation.
+  email_verified:
+    type: boolean
+  session_id:
+    type: string
+    format: uuid
+  authenticated_at:
+    type: string
+    format: date-time
+  access_expires_at:
+    type: string
+    format: date-time
+    description: Access token expiry; unchanged by this request.
+  session_expires_at:
+    type: string
+    format: date-time
+    description: Absolute session expiry, rounded down to whole seconds.

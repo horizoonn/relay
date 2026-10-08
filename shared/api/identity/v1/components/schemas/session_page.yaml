@@ -1,0 +1,13 @@
+type: object
+additionalProperties: false
+required: [sessions]
+properties:
+  sessions:
+    type: array
+    maxItems: 100
+    items:
+      $ref: ./session_info.yaml
+  next_cursor:
+    type: string
+    maxLength: 2048
+    description: Continuation cursor for this account; omitted on the last page.

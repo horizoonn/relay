@@ -1,0 +1,8 @@
+name: Origin
+in: header
+required: true
+description: Must exactly match the Relay HTTPS origin.
+schema:
+  type: string
+  minLength: 1
+  maxLength: 2048

@@ -1,0 +1,14 @@
+description: Request failed. The HTTP status and stable Relay code identify the failure.
+headers:
+  X-Request-Id:
+    $ref: ../headers/x_request_id.yaml
+  Retry-After:
+    description: >-
+      Minimum seconds before retrying a rate-limited request or a busy password operation.
+    schema:
+      type: string
+      pattern: '^[1-9][0-9]*$'
+content:
+  application/problem+json:
+    schema:
+      $ref: ../schemas/problem.yaml

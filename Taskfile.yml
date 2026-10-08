@@ -1,6 +1,8 @@
 version: "3"
 
 vars:
+  IDENTITY_OPENAPI_BUNDLE: "{{.ROOT_DIR}}/shared/api/bundles/identity.openapi.v1.bundle.yaml"
+  IDENTITY_OPENAPI_SOURCE: "{{.ROOT_DIR}}/shared/api/identity/v1/identity.openapi.yaml"
   GOLANGCI_LINT_VERSION: "v2.13.2"
   BUF_VERSION: "v1.73.0"
   PROTOC_GEN_GO_VERSION: "v1.36.12"
@@ -427,6 +429,7 @@ tasks:
     deps: [tools:redocly]
     cmds:
       - '"{{.REDOCLY}}" lint "{{.CONTENT_OPENAPI_SOURCE}}"'
+      - '"{{.REDOCLY}}" lint "{{.IDENTITY_OPENAPI_SOURCE}}"'
 
   openapi:bundle:
     desc: Bundle OpenAPI source contracts for generation and distribution
@@ -434,6 +437,7 @@ tasks:
     cmds:
       - mkdir -p "{{.ROOT_DIR}}/shared/api/bundles"
       - '"{{.REDOCLY}}" bundle "{{.CONTENT_OPENAPI_SOURCE}}" --output "{{.CONTENT_OPENAPI_BUNDLE}}"'
+      - '"{{.REDOCLY}}" bundle "{{.IDENTITY_OPENAPI_SOURCE}}" --output "{{.IDENTITY_OPENAPI_BUNDLE}}"'
 
   openapi:generate:
     desc: Generate Go code from bundled OpenAPI contracts
@@ -447,25 +451,24 @@ tasks:
     deps: [tools:ogen, tools:yq]
     cmds:
       - |
-        target=$("{{.YQ}}" e '."x-ogen".target' "{{.CONTENT_OPENAPI_BUNDLE}}")
-        package=$("{{.YQ}}" e '."x-ogen".package' "{{.CONTENT_OPENAPI_BUNDLE}}")
-        if [ -z "$target" ] || [ "$target" = "null" ] || [ -z "$package" ] || [ "$package" = "null" ]; then
-          echo "Missing x-ogen target/package in {{.CONTENT_OPENAPI_BUNDLE}}" >&2
-          exit 1
-        fi
-        case "$target" in
-          /*) ;;
-          *) target="{{.ROOT_DIR}}/${target#./}" ;;
-        esac
-        mkdir -p "$target"
-        (
-          cd "$target"
-          "{{.OGEN}}" \
-            --target . \
-            --package "$package" \
-            --clean \
-            "{{.CONTENT_OPENAPI_BUNDLE}}"
-        )
+        set -e
+        for bundle in "{{.CONTENT_OPENAPI_BUNDLE}}" "{{.IDENTITY_OPENAPI_BUNDLE}}"; do
+          target=$("{{.YQ}}" e '."x-ogen".target' "$bundle")
+          package=$("{{.YQ}}" e '."x-ogen".package' "$bundle")
+          if [ -z "$target" ] || [ "$target" = "null" ] || [ -z "$package" ] || [ "$package" = "null" ]; then
+            echo "Missing x-ogen target/package in $bundle" >&2
+            exit 1
+          fi
+          case "$target" in
+            /*) ;;
+            *) target="{{.ROOT_DIR}}/${target#./}" ;;
+          esac
+          mkdir -p "$target"
+          (
+            cd "$target"
+            "{{.OGEN}}" --target . --package "$package" --clean "$bundle"
+          )
+        done
 
   contracts:lint:
     desc: Lint all machine-readable contracts

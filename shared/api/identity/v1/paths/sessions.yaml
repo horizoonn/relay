@@ -1,0 +1,90 @@
+get:
+  operationId: ListSessions
+  summary: List active sessions
+  description: |
+    Requires an active calling session. Lists own active sessions by created_at
+    and session_id descending. Pages are not snapshots; reads do not update
+    activity or cookies and require no Origin or CSRF.
+  tags: [Authentication]
+  security:
+    - AccessCookie: []
+  parameters:
+    - name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    - name: cursor
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+  responses:
+    '200':
+      description: Page of own active sessions.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/session_page.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml
+delete:
+  operationId: RevokeAllSessions
+  summary: Revoke all sessions
+  description: |
+    Revokes all active sessions, including the current one. Requires an active
+    caller and matching CSRF cookie/header. Clears cookies after success;
+    repeating with the revoked session returns 401. A later login can create
+    a new session.
+  tags: [Authentication]
+  security:
+    - AccessCookie: []
+  parameters:
+    - $ref: ../components/parameters/origin.yaml
+    - $ref: ../components/parameters/csrf_cookie.yaml
+    - $ref: ../components/parameters/csrf_header.yaml
+  responses:
+    '204':
+      description: All active sessions revoked; browser cookies cleared.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+        Set-Cookie:
+          required: true
+          description: Three cookie deletions with the original paths and flags.
+          schema:
+            type: array
+            minItems: 3
+            maxItems: 3
+            items:
+              type: string
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '403':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

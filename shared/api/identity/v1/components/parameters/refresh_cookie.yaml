@@ -1,0 +1,8 @@
+name: __Secure-relay_refresh
+in: cookie
+required: false
+description: >-
+  Refresh credential. Required for refresh; logout accepts a missing or invalid value.
+schema:
+  type: string
+  maxLength: 128

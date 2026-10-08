@@ -1,0 +1,51 @@
+type: object
+additionalProperties: false
+required:
+  - type
+  - title
+  - status
+  - code
+  - detail
+  - request_id
+properties:
+  type:
+    type: string
+    format: uri
+    example: urn:relay:problem:invalid-request
+  title:
+    type: string
+    minLength: 1
+    maxLength: 128
+  status:
+    type: integer
+    minimum: 400
+    maximum: 599
+  code:
+    type: string
+    enum:
+      - EMAIL_NOT_VERIFIED
+      - INVALID_TOKEN
+      - INVALID_REQUEST
+      - INVALID_CREDENTIALS
+      - UNAUTHENTICATED
+      - REFRESH_CONFLICT
+      - REGISTRATION_CONFLICT
+      - SESSION_NOT_FOUND
+      - FORBIDDEN
+      - ROUTE_NOT_FOUND
+      - METHOD_NOT_ALLOWED
+      - PAYLOAD_TOO_LARGE
+      - UNSUPPORTED_MEDIA_TYPE
+      - RATE_LIMITED
+      - SERVICE_UNAVAILABLE
+      - INTERNAL_ERROR
+  detail:
+    type: string
+    minLength: 1
+    maxLength: 1024
+    description: Human-readable diagnostic without credentials; use code for client logic.
+  request_id:
+    type: string
+    minLength: 1
+    maxLength: 128
+    description: Equal to the response X-Request-Id header.

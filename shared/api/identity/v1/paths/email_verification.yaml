@@ -1,0 +1,38 @@
+post:
+  operationId: VerifyEmail
+  summary: Verify an email
+  description: |
+    Confirms the account email with a one-time token. Invalid, expired,
+    or used tokens return INVALID_TOKEN.
+  tags: [Authentication]
+  security: []
+  parameters:
+    - $ref: ../components/parameters/origin.yaml
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../components/schemas/account_token.yaml
+  responses:
+    '204':
+      description: Email verified.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '403':
+      $ref: ../components/responses/problem.yaml
+    '413':
+      $ref: ../components/responses/problem.yaml
+    '415':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    'default':
+      $ref: ../components/responses/problem.yaml
