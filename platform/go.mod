@@ -3,6 +3,7 @@ module github.com/horizoonn/relay/platform
 go 1.27.0
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.9.2
 	go.uber.org/zap v1.28.0
 )
