@@ -12,3 +12,9 @@ packages:
     interfaces:
       UserRepository:
       SessionRepository:
+  github.com/horizoonn/relay/identity/internal/usecase/email:
+    interfaces:
+      MailQueue:
+      DeliveryUsers:
+      DeliveryTokens:
+      Sender:
