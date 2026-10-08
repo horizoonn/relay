@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"uuid"
 
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
 	contentapi "github.com/horizoonn/relay/shared/pkg/openapi/content/v1"
 
 	"github.com/horizoonn/relay/content/internal/usecase/collection"
@@ -78,7 +79,7 @@ func (h *Handler) listCollection(
 	if err != nil {
 		return nil, err
 	}
-	return collectionPage(owner, surface, page, h.cursors, requestID(ctx))
+	return collectionPage(owner, surface, page, h.cursors, httpmiddleware.RequestID(ctx))
 }
 
 func collectionPage(

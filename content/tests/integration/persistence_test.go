@@ -10,7 +10,7 @@ import (
 	"time"
 	"uuid"
 
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/horizoonn/relay/content/internal/domain"
@@ -99,7 +99,7 @@ func TestURLUniquePerOwner(t *testing.T) {
 	owner, other := uuid.New(), uuid.New()
 	cleanupOwner(t, pool, owner)
 	cleanupOwner(t, pool, other)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 5*time.Second)
 	source, err := domain.NewURLSource("https://example.com/" + uuid.New().String())
 	if err != nil {
@@ -145,11 +145,12 @@ func TestReceiptConstraints(t *testing.T) {
 		) VALUES ($1, 'capture', $2, $3, $4, $5::timestamptz, $5::timestamptz + INTERVAL '7 days', $6, $7)
 	`
 	for _, tc := range []struct {
-		name, constraint string
-		version          int16
-		fingerprint      []byte
-		itemID           any
-		outcome          any
+		name        string
+		constraint  string
+		version     int16
+		fingerprint []byte
+		itemID      any
+		outcome     any
 	}{
 		{
 			name:        "short fingerprint",
@@ -193,7 +194,7 @@ func TestCaptureRollback(t *testing.T) {
 	pool, ctx := testPool(t)
 	owner := uuid.New()
 	cleanupOwner(t, pool, owner)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 5*time.Second)
 	command := capture.Command{
 		OwnerID:        owner,
@@ -257,7 +258,7 @@ func TestConcurrentSameKeyCapture(t *testing.T) {
 	pool, ctx := testPool(t)
 	owner := uuid.New()
 	cleanupOwner(t, pool, owner)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 5*time.Second)
 	svc := capture.NewService(repo, repo, tx)
 	command := capture.Command{
@@ -266,20 +267,24 @@ func TestConcurrentSameKeyCapture(t *testing.T) {
 		SourceType:     domain.SourceText,
 		Text:           "atomic capture",
 	}
-	var wg sync.WaitGroup
-	results := make([]capture.Result, 2)
-	errs := make([]error, 2)
-	start := make(chan struct{})
-	for index := range results {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-			<-start
-			results[index], errs[index] = svc.Capture(ctx, command)
-		}(index)
+	reached, release := make(chan int32, 1), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	held := holdBeforeCommit{TxManager: tx, reached: reached, release: release}
+	firstService := capture.NewService(repo, repo, held)
+	type captureResult struct {
+		value capture.Result
+		err   error
 	}
-	close(start)
-	wg.Wait()
+	firstDone, secondDone := make(chan captureResult, 1), make(chan captureResult, 1)
+	go func() { result, err := firstService.Capture(ctx, command); firstDone <- captureResult{result, err} }()
+	pid := awaitHeldTransaction(t, ctx, reached)
+	go func() { result, err := svc.Capture(ctx, command); secondDone <- captureResult{result, err} }()
+	waitForLockWait(t, ctx, pool, pid)
+	unblock()
+	a, b := <-firstDone, <-secondDone
+	results := []capture.Result{a.value, b.value}
+	errs := []error{a.err, b.err}
 	for _, err := range errs {
 		if err != nil {
 			t.Fatal(err)
@@ -343,7 +348,7 @@ func TestSearchCasefoldOwnerScope(t *testing.T) {
 	owner, other := uuid.New(), uuid.New()
 	cleanupOwner(t, pool, owner)
 	cleanupOwner(t, pool, other)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 5*time.Second)
 	create := func(owner uuid.UUID, title, body string) uuid.UUID {
 		t.Helper()
@@ -356,8 +361,8 @@ func TestSearchCasefoldOwnerScope(t *testing.T) {
 			t.Fatal(err)
 		}
 		if title != "" {
-			if err := value.SetDisplayTitle(title, time.Now().UTC()); err != nil {
-				t.Fatal(err)
+			if titleErr := value.SetDisplayTitle(title, time.Now().UTC()); titleErr != nil {
+				t.Fatal(titleErr)
 			}
 		}
 		created, err := repo.Create(ctx, value)

@@ -3,16 +3,16 @@ package repository
 import (
 	"time"
 
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
 )
 
 type Repository struct {
-	executor         platformpostgres.ExecutorGetter
+	executor         postgres.ExecutorFunc
 	operationTimeout time.Duration
 }
 
 func NewRepository(
-	executor platformpostgres.ExecutorGetter,
+	executor postgres.ExecutorFunc,
 	operationTimeout time.Duration,
 ) *Repository {
 	return &Repository{

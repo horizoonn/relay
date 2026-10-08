@@ -102,7 +102,7 @@ func TestPatchTitle(t *testing.T) {
 	}
 }
 
-func TestPatchRollback(t *testing.T) {
+func TestPatchInvalidTitle(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore(t)
 	service := NewService(store, store)

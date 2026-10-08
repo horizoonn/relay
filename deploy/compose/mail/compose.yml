@@ -1,0 +1,15 @@
+services:
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    profiles: [mail]
+    environment:
+      MP_MAX_MESSAGES: "200"
+    ports:
+      - "127.0.0.1:${MAILPIT_HTTP_PORT:-8025}:8025"
+    restart: unless-stopped
+    networks: [identity-mail, mailpit-ui]
+
+networks:
+  identity-mail:
+    internal: true
+  mailpit-ui: {}

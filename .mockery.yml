@@ -1,0 +1,20 @@
+all: false
+template: testify
+dir: "{{.InterfaceDir}}/mocks"
+filename: "mock_{{.InterfaceName | snakecase}}.go"
+pkgname: mocks
+structname: "Mock{{.InterfaceName}}"
+formatter: goimports
+force-file-write: true
+
+packages:
+  github.com/horizoonn/relay/identity/internal/usecase/session:
+    interfaces:
+      UserRepository:
+      SessionRepository:
+  github.com/horizoonn/relay/identity/internal/usecase/email:
+    interfaces:
+      MailQueue:
+      DeliveryUsers:
+      DeliveryTokens:
+      Sender:

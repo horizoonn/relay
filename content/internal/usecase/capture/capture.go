@@ -39,7 +39,7 @@ func (s *Service) Capture(
 		return transactionErr
 	})
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("capture item transaction: %w", err)
 	}
 	return result, nil
 }

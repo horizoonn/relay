@@ -13,7 +13,7 @@ import (
 	"time"
 	"uuid"
 
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -90,7 +90,7 @@ func TestSearchPerformance(t *testing.T) {
 		t.Fatalf("analyze performance fixture as migrator: %v", err)
 	}
 
-	repo := contentrepo.NewRepository(func(context.Context) platformpostgres.Executor {
+	repo := contentrepo.NewRepository(func(context.Context) postgres.Executor {
 		return pool
 	}, 30*time.Second)
 	service := search.NewService(repo)

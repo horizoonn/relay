@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -30,7 +31,7 @@ func (r *Repository) Complete(
 		params.Outcome,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("complete capture receipt: %w", err)
 	}
 	if tag.RowsAffected() != 1 {
 		return pgx.ErrNoRows

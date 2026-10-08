@@ -1,0 +1,76 @@
+get:
+  operationId: GetCurrentSession
+  summary: Get the current session
+  description: |
+    Returns the account and session for the access cookie. Invalid access or an
+    inactive account/session returns UNAUTHENTICATED. No Origin or CSRF is needed.
+    Does not renew tokens, update activity, or change cookies.
+  tags:
+    - Authentication
+  security:
+    - AccessCookie: []
+  responses:
+    '200':
+      description: Current account and session.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/current_session.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml
+delete:
+  operationId: Logout
+  summary: Log out
+  description: |
+    Revokes the session identified by the refresh cookie; no valid access token
+    is needed. A supplied refresh cookie requires matching session-bound CSRF,
+    even if it was already rotated. Missing or invalid refresh still clears
+    browser cookies after success.
+  tags:
+    - Authentication
+  parameters:
+    - $ref: ../components/parameters/origin.yaml
+    - $ref: ../components/parameters/refresh_cookie.yaml
+    - $ref: ../components/parameters/csrf_cookie.yaml
+    - $ref: ../components/parameters/csrf_header.yaml
+  responses:
+    '204':
+      description: Session revoked or absent; browser cookies cleared.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+        Set-Cookie:
+          required: true
+          description: >-
+            Three cookie deletions with original paths and flags, Max-Age=0, and past expiry.
+          schema:
+            type: array
+            minItems: 3
+            maxItems: 3
+            items:
+              type: string
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '403':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

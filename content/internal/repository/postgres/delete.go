@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"uuid"
 
 	"github.com/jackc/pgx/v5"
@@ -27,7 +28,7 @@ func (r *Repository) Delete(
 		if errors.Is(err, pgx.ErrNoRows) {
 			return itemusecase.ErrItemNotFound
 		}
-		return err
+		return fmt.Errorf("execute item deletion: %w", err)
 	}
 	return nil
 }

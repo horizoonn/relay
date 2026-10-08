@@ -1,0 +1,58 @@
+post:
+  operationId: Login
+  summary: Log in with a password
+  description: |
+    Creates a new session. Unknown or disabled accounts and incorrect passwords
+    return INVALID_CREDENTIALS. A correct password for an unverified email returns
+    403 EMAIL_NOT_VERIFIED.
+  tags:
+    - Authentication
+  parameters:
+    - $ref: ../components/parameters/origin.yaml
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../components/schemas/credentials.yaml
+  responses:
+    '200':
+      description: Session created and browser cookies set.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+        Set-Cookie:
+          required: true
+          description: |
+            Three separate headers; cookies are Secure, host-only, and SameSite=Lax.
+            __Host-relay_access: HttpOnly, Path=/, expires with the access token.
+            __Secure-relay_refresh: HttpOnly, Path=/api/v1/auth, expires with session.
+            __Host-relay_csrf: readable by JavaScript, Path=/, expires with session.
+          schema:
+            type: array
+            minItems: 3
+            maxItems: 3
+            items:
+              type: string
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/login_session.yaml
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '403':
+      $ref: ../components/responses/problem.yaml
+    '413':
+      $ref: ../components/responses/problem.yaml
+    '415':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

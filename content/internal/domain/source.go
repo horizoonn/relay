@@ -49,7 +49,8 @@ func (s Source) valid() bool {
 		return s.Text == "" && err == nil && s.NormalizedURL == normalized
 	case SourceText:
 		return s.OriginalURL == "" && s.NormalizedURL == "" &&
-			utf8.ValidString(s.Text) && len(s.Text) <= 65536 && strings.TrimSpace(s.Text) != ""
+			utf8.ValidString(s.Text) && !strings.ContainsRune(s.Text, '\x00') &&
+			len(s.Text) <= 65536 && strings.TrimSpace(s.Text) != ""
 	default:
 		return false
 	}

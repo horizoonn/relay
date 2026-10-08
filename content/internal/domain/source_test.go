@@ -43,6 +43,11 @@ func TestNewTextSource(t *testing.T) {
 			text:    string([]byte{0xff}),
 			wantErr: true,
 		},
+		{
+			name:    "NUL character",
+			text:    "a\x00b",
+			wantErr: true,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

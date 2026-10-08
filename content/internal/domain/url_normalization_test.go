@@ -271,7 +271,8 @@ func TestNormalizeURLIdentity(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		a, b     string
+		a        string
+		b        string
 		wantSame bool
 	}{
 		{

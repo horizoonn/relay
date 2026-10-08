@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
 	contentapi "github.com/horizoonn/relay/shared/pkg/openapi/content/v1"
 
 	"github.com/horizoonn/relay/content/internal/usecase/search"
@@ -49,7 +50,7 @@ func (h *Handler) SearchItems(
 		response.NextCursor = contentapi.NewOptString(cursor)
 	}
 	return &contentapi.ItemPageHeaders{
-		XRequestID: requestID(ctx),
+		XRequestID: httpmiddleware.RequestID(ctx),
 		Response:   response,
 	}, nil
 }

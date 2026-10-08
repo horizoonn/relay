@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"uuid"
 
 	"github.com/horizoonn/relay/content/internal/repository/postgres/model"
@@ -81,19 +82,19 @@ func (r *Repository) listCollection(
 	}
 	rows, err := r.executor(ctx).Query(ctx, query, params.OwnerID, afterAt, afterID, params.Limit+1)
 	if err != nil {
-		return collection.Page{}, err
+		return collection.Page{}, fmt.Errorf("query item collection: %w", err)
 	}
 	defer rows.Close()
 	models := make([]model.Summary, 0, params.Limit+1)
 	for rows.Next() {
 		var summary model.Summary
 		if err := summary.Scan(rows); err != nil {
-			return collection.Page{}, err
+			return collection.Page{}, fmt.Errorf("scan collection item: %w", err)
 		}
 		models = append(models, summary)
 	}
 	if err := rows.Err(); err != nil {
-		return collection.Page{}, err
+		return collection.Page{}, fmt.Errorf("iterate item collection: %w", err)
 	}
 	var next *collection.Anchor
 	if len(models) > params.Limit {

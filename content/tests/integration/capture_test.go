@@ -10,7 +10,7 @@ import (
 	"time"
 	"uuid"
 
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
 
 	"github.com/horizoonn/relay/content/internal/domain"
 	contentrepo "github.com/horizoonn/relay/content/internal/repository/postgres"
@@ -22,7 +22,7 @@ func TestConcurrentURLCapture(t *testing.T) {
 	pool, ctx := testPool(t)
 	ownerID := uuid.New()
 	cleanupOwner(t, pool, ownerID)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 5*time.Second)
 	service := capture.NewService(repo, repo, tx)
 	url := "https://example.com/concurrent/" + uuid.New().String()
@@ -42,20 +42,24 @@ func TestConcurrentURLCapture(t *testing.T) {
 			Later:          true,
 		},
 	}
-	start := make(chan struct{})
-	results := make([]capture.Result, len(commands))
-	errs := make([]error, len(commands))
-	var wg sync.WaitGroup
-	for i := range commands {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			<-start
-			results[i], errs[i] = service.Capture(ctx, commands[i])
-		}(i)
+	reached, release := make(chan int32, 1), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	held := holdBeforeCommit{TxManager: tx, reached: reached, release: release}
+	firstService := capture.NewService(repo, repo, held)
+	type captureResult struct {
+		value capture.Result
+		err   error
 	}
-	close(start)
-	wg.Wait()
+	firstDone, secondDone := make(chan captureResult, 1), make(chan captureResult, 1)
+	go func() { result, err := firstService.Capture(ctx, commands[0]); firstDone <- captureResult{result, err} }()
+	pid := awaitHeldTransaction(t, ctx, reached)
+	go func() { result, err := service.Capture(ctx, commands[1]); secondDone <- captureResult{result, err} }()
+	waitForLockWait(t, ctx, pool, pid)
+	unblock()
+	a, b := <-firstDone, <-secondDone
+	results := []capture.Result{a.value, b.value}
+	errs := []error{a.err, b.err}
 	for _, err := range errs {
 		if err != nil {
 			t.Fatal(err)
@@ -77,12 +81,12 @@ func TestConcurrentURLCapture(t *testing.T) {
 		FROM content.idempotency_records
 		WHERE owner_id = $1
 	`
-	if err := pool.QueryRow(ctx, receiptCountQuery, ownerID).Scan(&receipts); err != nil || receipts != 2 {
-		t.Fatalf("receipt count=%d err=%v", receipts, err)
+	if scanErr := pool.QueryRow(ctx, receiptCountQuery, ownerID).Scan(&receipts); scanErr != nil || receipts != 2 {
+		t.Fatalf("receipt count=%d scanErr=%v", receipts, scanErr)
 	}
 	items := itemusecase.NewService(repo, tx)
-	if err := items.Delete(ctx, ownerID, results[0].ItemID); err != nil {
-		t.Fatal(err)
+	if deleteErr := items.Delete(ctx, ownerID, results[0].ItemID); deleteErr != nil {
+		t.Fatal(deleteErr)
 	}
 	replay, err := service.Capture(ctx, commands[0])
 	if err != nil || replay != results[0] {
@@ -100,7 +104,7 @@ func TestExpiredCaptureKey(t *testing.T) {
 	pool, ctx := testPool(t)
 	ownerID := uuid.New()
 	cleanupOwner(t, pool, ownerID)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 5*time.Second)
 	old := capture.ClaimParams{
 		OwnerID:            ownerID,

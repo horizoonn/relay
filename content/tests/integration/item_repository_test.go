@@ -10,7 +10,8 @@ import (
 	"time"
 	"uuid"
 
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/horizoonn/relay/content/internal/domain"
 	contentrepo "github.com/horizoonn/relay/content/internal/repository/postgres"
@@ -18,31 +19,37 @@ import (
 	itemusecase "github.com/horizoonn/relay/content/internal/usecase/item"
 )
 
-// The barrier lets both PATCH requests reach the repository before either reads the row.
-type patchBarrierRepository struct {
+type heldItemRepository struct {
 	*contentrepo.Repository
-	ready   chan struct{}
-	release chan struct{}
+	executor postgres.ExecutorFunc
+	reached  chan int32
+	release  <-chan struct{}
 }
 
-func (r patchBarrierRepository) GetForUpdate(
-	ctx context.Context,
-	ownerID, itemID uuid.UUID,
-) (domain.Item, error) {
-	r.ready <- struct{}{}
+func (r heldItemRepository) GetForUpdate(ctx context.Context, owner, id uuid.UUID) (domain.Item, error) {
+	value, err := r.Repository.GetForUpdate(ctx, owner, id)
+	if err != nil {
+		return domain.Item{}, err
+	}
+	pid := int32(r.executor(ctx).(pgx.Tx).Conn().PgConn().PID())
 	select {
-	case <-r.release:
+	case r.reached <- pid:
 	case <-ctx.Done():
 		return domain.Item{}, ctx.Err()
 	}
-	return r.Repository.GetForUpdate(ctx, ownerID, itemID)
+	select {
+	case <-r.release:
+		return value, nil
+	case <-ctx.Done():
+		return domain.Item{}, ctx.Err()
+	}
 }
 
 func TestPatchOwnerScopeAndConcurrency(t *testing.T) {
 	pool, ctx := testPool(t)
 	owner, other := uuid.New(), uuid.New()
 	cleanupOwner(t, pool, owner)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 5*time.Second)
 	created, err := capture.NewService(repo, repo, tx).Capture(ctx, capture.Command{
 		OwnerID:        owner,
@@ -54,11 +61,11 @@ func TestPatchOwnerScopeAndConcurrency(t *testing.T) {
 		t.Fatal(err)
 	}
 	items := itemusecase.NewService(repo, tx)
-	if _, err := items.Get(ctx, other, created.ItemID); !errors.Is(err, itemusecase.ErrItemNotFound) {
-		t.Fatalf("foreign Get: %v", err)
+	if _, getErr := items.Get(ctx, other, created.ItemID); !errors.Is(getErr, itemusecase.ErrItemNotFound) {
+		t.Fatalf("foreign Get: %v", getErr)
 	}
-	if err := items.Delete(ctx, other, created.ItemID); !errors.Is(err, itemusecase.ErrItemNotFound) {
-		t.Fatalf("foreign Delete: %v", err)
+	if deleteErr := items.Delete(ctx, other, created.ItemID); !errors.Is(deleteErr, itemusecase.ErrItemNotFound) {
+		t.Fatalf("foreign Delete: %v", deleteErr)
 	}
 	var beforeCaptured, beforeUpdated time.Time
 	const timestampsQuery = `
@@ -66,60 +73,53 @@ func TestPatchOwnerScopeAndConcurrency(t *testing.T) {
 		FROM content.items
 		WHERE id = $1
 	`
-	if err := pool.QueryRow(ctx, timestampsQuery, created.ItemID).
-		Scan(&beforeCaptured, &beforeUpdated); err != nil {
-		t.Fatal(err)
+	if scanErr := pool.QueryRow(ctx, timestampsQuery, created.ItemID).
+		Scan(&beforeCaptured, &beforeUpdated); scanErr != nil {
+		t.Fatal(scanErr)
 	}
 
-	barrier := patchBarrierRepository{
-		Repository: repo,
-		ready:      make(chan struct{}, 2),
-		release:    make(chan struct{}),
+	reached, release := make(chan int32, 1), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	held := heldItemRepository{Repository: repo, executor: tx.Executor, reached: reached, release: release}
+	keep, later := true, domain.ReviewLater
+	firstCommand := itemusecase.PatchCommand{OwnerID: owner, ItemID: created.ItemID, Keep: &keep}
+	firstDone := make(chan error, 1)
+	go func() {
+		_, patchErr := itemusecase.NewService(held, tx).Patch(ctx, firstCommand)
+		firstDone <- patchErr
+	}()
+	pid := awaitHeldTransaction(t, ctx, reached)
+	type patchResult struct {
+		value domain.Item
+		err   error
 	}
-	concurrentItems := itemusecase.NewService(barrier, tx)
-	keep := true
-	later := domain.ReviewLater
-	commands := []itemusecase.PatchCommand{
-		{
-			OwnerID: owner,
-			ItemID:  created.ItemID,
-			Keep:    &keep,
-		},
-		{
-			OwnerID:      owner,
-			ItemID:       created.ItemID,
-			ReviewStatus: &later,
-		},
+	secondDone := make(chan patchResult, 1)
+	go func() {
+		value, patchErr := items.Patch(ctx, itemusecase.PatchCommand{OwnerID: owner, ItemID: created.ItemID, ReviewStatus: &later})
+		secondDone <- patchResult{value, patchErr}
+	}()
+	waitForLockWait(t, ctx, pool, pid)
+	unblock()
+	if patchErr := <-firstDone; patchErr != nil {
+		t.Fatal(patchErr)
 	}
-	var wg sync.WaitGroup
-	errs := make([]error, len(commands))
-	for index := range commands {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-			_, errs[index] = concurrentItems.Patch(ctx, commands[index])
-		}(index)
+	second := <-secondDone
+	if second.err != nil {
+		t.Fatal(second.err)
 	}
-	for range commands {
-		select {
-		case <-barrier.ready:
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		}
-	}
-	close(barrier.release)
-	wg.Wait()
-	for _, err := range errs {
-		if err != nil {
-			t.Fatal(err)
-		}
+	if !second.value.Keep() || second.value.ReviewStatus() != domain.ReviewLater {
+		t.Fatal("second PATCH did not observe the first committed change")
 	}
 	value, err := items.Get(ctx, owner, created.ItemID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !value.Keep() || value.ReviewStatus() != domain.ReviewLater || !value.LastCapturedAt().Equal(beforeCaptured) {
-		t.Fatalf("concurrent PATCH lost an independent field: %+v", value)
+	if !value.Keep() || value.ReviewStatus() != domain.ReviewLater {
+		t.Fatal("concurrent PATCH lost an independent field")
+	}
+	if !value.LastCapturedAt().Equal(beforeCaptured) {
+		t.Fatal("PATCH changed last capture time")
 	}
 	var patchedUpdated time.Time
 	const updatedAtQuery = `
@@ -133,7 +133,7 @@ func TestPatchOwnerScopeAndConcurrency(t *testing.T) {
 	if patchedUpdated.Before(beforeUpdated) {
 		t.Fatalf("updated_at moved backwards: %s -> %s", beforeUpdated, patchedUpdated)
 	}
-	if _, err := items.Patch(ctx, commands[0]); err != nil {
+	if _, err := items.Patch(ctx, firstCommand); err != nil {
 		t.Fatal(err)
 	}
 	var noOpUpdated time.Time

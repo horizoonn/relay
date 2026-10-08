@@ -1,0 +1,8 @@
+name: X-Csrf-Token
+in: header
+required: false
+description: >-
+  Must match the CSRF cookie. Required for revocation and whenever a refresh cookie is supplied.
+schema:
+  type: string
+  maxLength: 128

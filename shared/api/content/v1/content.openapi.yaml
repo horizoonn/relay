@@ -10,6 +10,12 @@ info:
     Recent, Library, Later, and Search read surfaces. The authenticated owner is
     derived from Identity and is never supplied by the client.
 
+    Capture, Item mutations, ordinary reads, and Search have separate per-user
+    refill budgets shared across sessions. Admission follows JWT/CSRF validation
+    and request decoding and precedes database work. Rejection returns 429
+    TOO_MANY_REQUESTS with Retry-After in whole seconds. During Redis outages,
+    bounded process-wide fallback budgets protect each operation group.
+
 servers:
   - url: /
 
@@ -48,10 +54,14 @@ components:
     accessCookie:
       type: apiKey
       in: cookie
-      name: relay_access_token
-      description: Secure, HttpOnly, SameSite opaque access-token cookie issued by Identity.
+      name: __Host-relay_access
+      description: >-
+        Secure, HttpOnly, SameSite=Lax short-lived signed Relay JWT, Path=/;
+        verified locally without an Identity request.
     csrfHeader:
       type: apiKey
       in: header
       name: X-Csrf-Token
-      description: CSRF token required together with the access cookie for state-changing requests.
+      description: >-
+        For mutations, requires exact Origin, equality with __Host-relay_csrf cookie,
+        and a hash matching the verified access JWT csrf_hash.

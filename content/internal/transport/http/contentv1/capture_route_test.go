@@ -113,11 +113,11 @@ func TestCaptureRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := NewServer(handler, fakeAuthenticator{
+	server, err := NewServer(handler, fakeVerifier{
 		owner: routeOwnerID,
 		token: "access",
-		csrf:  "csrf",
-	}, testOrigin)
+		csrf:  testCSRF,
+	}, testOrigin, unlimitedLimiter{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
 	contentapi "github.com/horizoonn/relay/shared/pkg/openapi/content/v1"
 
 	"github.com/horizoonn/relay/content/internal/domain"
@@ -45,7 +46,7 @@ func (h *Handler) CaptureItem(
 	case captureusecase.OutcomeCreated:
 		return &contentapi.CreatedCaptureReceiptHeaders{
 			Location:   fmt.Sprintf("/api/v1/items/%s", result.ItemID),
-			XRequestID: requestID(ctx),
+			XRequestID: httpmiddleware.RequestID(ctx),
 			Response: contentapi.CreatedCaptureReceipt{
 				ItemID:  contentapi.ItemID(result.ItemID),
 				Outcome: contentapi.CreatedCaptureReceiptOutcomeCreated,
@@ -53,7 +54,7 @@ func (h *Handler) CaptureItem(
 		}, nil
 	case captureusecase.OutcomeReused:
 		return &contentapi.ReusedCaptureReceiptHeaders{
-			XRequestID: requestID(ctx),
+			XRequestID: httpmiddleware.RequestID(ctx),
 			Response: contentapi.ReusedCaptureReceipt{
 				ItemID:  contentapi.ItemID(result.ItemID),
 				Outcome: contentapi.ReusedCaptureReceiptOutcomeReused,

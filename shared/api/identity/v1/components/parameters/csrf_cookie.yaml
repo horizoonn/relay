@@ -1,0 +1,9 @@
+name: __Host-relay_csrf
+in: cookie
+required: false
+description: >-
+  Session-bound CSRF value; must match X-Csrf-Token.
+  Required for revocation and whenever a refresh cookie is supplied.
+schema:
+  type: string
+  maxLength: 128

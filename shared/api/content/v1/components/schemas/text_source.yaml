@@ -12,5 +12,6 @@ properties:
     type: string
     minLength: 1
     maxLength: 65536
+    pattern: '^[^\x00]*$'
     x-relay-max-utf8-bytes: 65536
     description: Exact immutable UTF-8 text supplied by the user.

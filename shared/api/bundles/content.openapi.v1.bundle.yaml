@@ -8,6 +8,12 @@ info:
     The API captures URL and text sources, exposes Item user context, and provides
     Recent, Library, Later, and Search read surfaces. The authenticated owner is
     derived from Identity and is never supplied by the client.
+
+    Capture, Item mutations, ordinary reads, and Search have separate per-user
+    refill budgets shared across sessions. Admission follows JWT/CSRF validation
+    and request decoding and precedes database work. Rejection returns 429
+    TOO_MANY_REQUESTS with Retry-After in whole seconds. During Redis outages,
+    bounded process-wide fallback budgets protect each operation group.
 servers:
   - url: /
 security:
@@ -337,13 +343,13 @@ components:
     accessCookie:
       type: apiKey
       in: cookie
-      name: relay_access_token
-      description: Secure, HttpOnly, SameSite opaque access-token cookie issued by Identity.
+      name: __Host-relay_access
+      description: Secure, HttpOnly, SameSite=Lax short-lived signed Relay JWT, Path=/; verified locally without an Identity request.
     csrfHeader:
       type: apiKey
       in: header
       name: X-Csrf-Token
-      description: CSRF token required together with the access cookie for state-changing requests.
+      description: For mutations, requires exact Origin, equality with __Host-relay_csrf cookie, and a hash matching the verified access JWT csrf_hash.
   parameters:
     idempotency_key:
       name: Idempotency-Key
@@ -441,9 +447,10 @@ components:
           type: string
           minLength: 1
           maxLength: 65536
+          pattern: ^[^\x00]*$
           x-relay-max-utf8-bytes: 65536
           description: |
-            Exact UTF-8 text to preserve as Source. Whitespace-only text is rejected.
+            Exact UTF-8 text to preserve as Source. Whitespace-only text and U+0000 are rejected.
             The authoritative limit is 65536 UTF-8 bytes; accepted text is not trimmed.
         keep:
           type: boolean
@@ -614,6 +621,7 @@ components:
           type: string
           minLength: 1
           maxLength: 256
+          pattern: ^[^\x00]*$
           description: User title override. Omitted when absent.
         preview:
           type: string
@@ -683,6 +691,7 @@ components:
           type: string
           minLength: 1
           maxLength: 65536
+          pattern: ^[^\x00]*$
           x-relay-max-utf8-bytes: 65536
           description: Exact immutable UTF-8 text supplied by the user.
     source:
@@ -714,6 +723,7 @@ components:
           type: string
           minLength: 1
           maxLength: 256
+          pattern: ^[^\x00]*$
           description: User title override. Omitted when no override exists; whitespace-only values are invalid.
         keep:
           type: boolean
@@ -757,6 +767,7 @@ components:
           nullable: true
           minLength: 1
           maxLength: 256
+          pattern: ^[^\x00]*$
           description: Set a non-whitespace user title, or null to clear the override.
   headers:
     x_request_id:

@@ -9,3 +9,8 @@ tmp
 
 **/.env
 deploy/env/*.env
+deploy/certs
+deploy/proxy/certs
+deploy/proxy/local-ca
+deploy/identity/keys
+shared/pkg/openapi

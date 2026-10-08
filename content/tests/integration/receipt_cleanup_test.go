@@ -8,7 +8,7 @@ import (
 	"time"
 	"uuid"
 
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
 
 	contentrepo "github.com/horizoonn/relay/content/internal/repository/postgres"
 )
@@ -28,10 +28,22 @@ func TestExpiredReceiptCleanup(t *testing.T) {
 		key       string
 		expiresAt time.Time
 	}{
-		{key: "expired-a", expiresAt: now.Add(-2 * time.Hour)},
-		{key: "expired-b", expiresAt: now.Add(-time.Hour)},
-		{key: "recently-expired", expiresAt: now.Add(-30 * time.Minute)},
-		{key: "active", expiresAt: now.Add(time.Hour)},
+		{
+			key:       "expired-a",
+			expiresAt: now.Add(-2 * time.Hour),
+		},
+		{
+			key:       "expired-b",
+			expiresAt: now.Add(-time.Hour),
+		},
+		{
+			key:       "recently-expired",
+			expiresAt: now.Add(-30 * time.Minute),
+		},
+		{
+			key:       "active",
+			expiresAt: now.Add(time.Hour),
+		},
 	} {
 		if _, err := pool.Exec(
 			ctx, insert, owner, receipt.key, make([]byte, 32),
@@ -40,7 +52,7 @@ func TestExpiredReceiptCleanup(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	repo := contentrepo.NewRepository(func(context.Context) platformpostgres.Executor {
+	repo := contentrepo.NewRepository(func(context.Context) postgres.Executor {
 		return pool
 	}, 5*time.Second)
 	locked, err := pool.Begin(ctx)
@@ -54,8 +66,8 @@ func TestExpiredReceiptCleanup(t *testing.T) {
 		WHERE owner_id = $1 AND idempotency_key = 'expired-a'
 		FOR UPDATE
 	`
-	if _, err := locked.Exec(ctx, lockReceiptQuery, owner); err != nil {
-		t.Fatal(err)
+	if _, lockErr := locked.Exec(ctx, lockReceiptQuery, owner); lockErr != nil {
+		t.Fatal(lockErr)
 	}
 	deleted, err := repo.DeleteExpiredReceipts(ctx, now.Add(-time.Hour), 1)
 	if err != nil || deleted != 1 {

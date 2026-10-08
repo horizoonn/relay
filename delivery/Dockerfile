@@ -14,7 +14,7 @@ WORKDIR /app
 
 COPY --from=goose-builder /out/goose /usr/local/bin/goose
 COPY --chown=app:app delivery/migrations /migrations
-COPY --chown=app:app deploy/docker/run-migrations.sh /usr/local/bin/run-migrations
+COPY --chown=app:app deploy/postgres/run-migrations.sh /usr/local/bin/run-migrations
 
 USER app
 

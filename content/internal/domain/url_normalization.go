@@ -68,11 +68,7 @@ func parseCaptureURL(original string) (*url.URL, string, error) {
 	}
 	u, err := url.Parse(original)
 	if err != nil {
-		return nil, "", fmt.Errorf(
-			"%w: parse URL: %w",
-			ErrInvalidSource,
-			err,
-		)
+		return nil, "", fmt.Errorf("%w: parse URL: %w", ErrInvalidSource, err)
 	}
 	scheme := strings.ToLower(u.Scheme)
 	if (scheme != "http" && scheme != "https") || u.Opaque != "" ||
@@ -171,18 +167,12 @@ func normalizeEscapes(raw string) (string, error) {
 		switch {
 		case c == '%':
 			if i+2 >= len(raw) {
-				return "", fmt.Errorf(
-					"%w: malformed percent encoding",
-					ErrInvalidSource,
-				)
+				return "", fmt.Errorf("%w: malformed percent encoding", ErrInvalidSource)
 			}
 			hi, okHi := hexValue(raw[i+1])
 			lo, okLo := hexValue(raw[i+2])
 			if !okHi || !okLo {
-				return "", fmt.Errorf(
-					"%w: malformed percent encoding",
-					ErrInvalidSource,
-				)
+				return "", fmt.Errorf("%w: malformed percent encoding", ErrInvalidSource)
 			}
 			decoded := hi<<4 | lo
 			if unreserved(decoded) {

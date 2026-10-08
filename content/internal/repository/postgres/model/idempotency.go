@@ -19,7 +19,12 @@ type Idempotency struct {
 }
 
 func (storedRecord *Idempotency) Scan(row pgx.Row) error {
-	return row.Scan(&storedRecord.FingerprintVersion, &storedRecord.Fingerprint, &storedRecord.ItemID, &storedRecord.Outcome)
+	return row.Scan(
+		&storedRecord.FingerprintVersion,
+		&storedRecord.Fingerprint,
+		&storedRecord.ItemID,
+		&storedRecord.Outcome,
+	)
 }
 
 func (storedRecord Idempotency) ToRecord() (capture.IdempotencyRecord, error) {

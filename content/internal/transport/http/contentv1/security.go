@@ -2,61 +2,72 @@ package contentv1
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"crypto/sha256"
+	"crypto/subtle"
 	"uuid"
 
+	"github.com/horizoonn/relay/platform/pkg/httpmiddleware"
+	"github.com/horizoonn/relay/platform/pkg/security/accessjwt"
 	contentapi "github.com/horizoonn/relay/shared/pkg/openapi/content/v1"
-
-	"github.com/horizoonn/relay/content/internal/auth"
 )
 
-type (
-	principalKey struct{}
-	originKey    struct{}
-)
+type principalKey struct{}
+
+type browserKey struct{}
 
 type principal struct {
-	ownerID     uuid.UUID
-	accessToken string
+	ownerID  uuid.UUID
+	csrfHash [32]byte
+}
+
+type AccessVerifier interface {
+	Verify(string) (accessjwt.Access, error)
+}
+
+type browserRequest struct {
+	origin          string
+	csrfCookie      string
+	originCount     int
+	csrfHeaderCount int
 }
 
 type Security struct {
-	auth          auth.Authenticator
+	verifier      AccessVerifier
 	allowedOrigin string
 }
 
 func NewSecurity(
-	authenticator auth.Authenticator,
+	verifier AccessVerifier,
 	allowedOrigin string,
 ) *Security {
 	return &Security{
-		auth:          authenticator,
+		verifier:      verifier,
 		allowedOrigin: allowedOrigin,
 	}
 }
 
-func withRequestOrigin(ctx context.Context, origin string) context.Context {
-	return context.WithValue(ctx, originKey{}, origin)
+func withBrowserRequest(ctx context.Context, request browserRequest) context.Context {
+	return context.WithValue(ctx, browserKey{}, request)
 }
 
 var _ contentapi.SecurityHandler = (*Security)(nil)
 
 func (s *Security) HandleAccessCookie(
 	ctx context.Context,
-	_ contentapi.OperationName,
+	operation contentapi.OperationName,
 	token contentapi.AccessCookie,
 ) (context.Context, error) {
-	ownerID, err := s.auth.Introspect(ctx, token.APIKey)
+	httpmiddleware.SetOperation(ctx, operation)
+	access, err := s.verifier.Verify(token.APIKey)
 	if err != nil {
-		return ctx, identityError(err)
+		return ctx, errUnauthenticated
 	}
-	if ownerID == uuid.Nil() {
-		return ctx, auth.ErrUnauthenticated
+	if access.UserID == uuid.Nil() || access.SessionID == uuid.Nil() {
+		return ctx, errUnauthenticated
 	}
 	return context.WithValue(ctx, principalKey{}, principal{
-		ownerID:     ownerID,
-		accessToken: token.APIKey,
+		ownerID:  access.UserID,
+		csrfHash: access.CSRFHash,
 	}), nil
 }
 
@@ -67,29 +78,24 @@ func (s *Security) HandleCsrfHeader(
 ) (context.Context, error) {
 	p, ok := ctx.Value(principalKey{}).(principal)
 	if !ok {
-		return ctx, auth.ErrUnauthenticated
+		return ctx, errUnauthenticated
 	}
-	if origin, _ := ctx.Value(originKey{}).(string); origin != s.allowedOrigin {
-		return ctx, auth.ErrForbidden
+	request, ok := ctx.Value(browserKey{}).(browserRequest)
+	if !ok || request.originCount != 1 || request.origin != s.allowedOrigin || request.csrfHeaderCount != 1 ||
+		len(token.APIKey) != 43 || subtle.ConstantTimeCompare([]byte(request.csrfCookie), []byte(token.APIKey)) != 1 {
+		return ctx, errForbidden
 	}
-	if err := s.auth.ValidateCSRF(ctx, p.accessToken, token.APIKey); err != nil {
-		return ctx, identityError(err)
+	hash := sha256.Sum256([]byte(token.APIKey))
+	if subtle.ConstantTimeCompare(hash[:], p.csrfHash[:]) != 1 {
+		return ctx, errForbidden
 	}
 	return ctx, nil
-}
-
-func identityError(err error) error {
-	if errors.Is(err, auth.ErrUnauthenticated) || errors.Is(err, auth.ErrForbidden) ||
-		errors.Is(err, auth.ErrIdentityUnavailable) {
-		return err
-	}
-	return fmt.Errorf("%w: %w", auth.ErrIdentityUnavailable, err)
 }
 
 func PrincipalFromContext(ctx context.Context) (uuid.UUID, error) {
 	p, ok := ctx.Value(principalKey{}).(principal)
 	if !ok || p.ownerID == uuid.Nil() {
-		return uuid.Nil(), auth.ErrUnauthenticated
+		return uuid.Nil(), errUnauthenticated
 	}
 	return p.ownerID, nil
 }

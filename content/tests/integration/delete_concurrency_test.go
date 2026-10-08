@@ -10,7 +10,7 @@ import (
 	"time"
 	"uuid"
 
-	platformpostgres "github.com/horizoonn/relay/platform/pkg/postgres"
+	"github.com/horizoonn/relay/platform/pkg/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/horizoonn/relay/content/internal/domain"
@@ -23,7 +23,7 @@ func TestDeleteConcurrentWithURLCapture(t *testing.T) {
 	pool, ctx := testPool(t)
 	owner := uuid.New()
 	cleanupOwner(t, pool, owner)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 15*time.Second)
 	captures := capture.NewService(repo, repo, tx)
 	items := itemusecase.NewService(repo, tx)
@@ -90,7 +90,7 @@ func TestDeleteConcurrentWithPatch(t *testing.T) {
 	pool, ctx := testPool(t)
 	owner := uuid.New()
 	cleanupOwner(t, pool, owner)
-	tx := platformpostgres.NewTxManager(pool)
+	tx := postgres.NewTxManager(pool)
 	repo := contentrepo.NewRepository(tx.Executor, 15*time.Second)
 	captures := capture.NewService(repo, repo, tx)
 	items := itemusecase.NewService(repo, tx)
@@ -141,7 +141,7 @@ func TestDeleteConcurrentWithPatch(t *testing.T) {
 
 func deleteInsideOpenTransaction(
 	ctx context.Context,
-	tx *platformpostgres.TxManager,
+	tx *postgres.TxManager,
 	items *itemusecase.Service,
 	owner, itemID uuid.UUID,
 ) (<-chan int32, chan struct{}, <-chan error) {

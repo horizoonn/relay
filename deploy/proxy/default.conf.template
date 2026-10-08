@@ -1,0 +1,69 @@
+# Native HTTP error logs include the unredacted request line and Referer.
+# Use the safe access log below for HTTP failures, including upstream errors.
+error_log /dev/null;
+
+log_format relay escape=json
+    '{"method":"$request_method","status":$status,'
+    '"request_id":"$sent_http_x_request_id","duration_seconds":$request_time,'
+    '"upstream":"$upstream_addr","upstream_status":"$upstream_status",'
+    '"upstream_connect_seconds":"$upstream_connect_time",'
+    '"upstream_response_seconds":"$upstream_response_time",'
+    '"tls_protocol":"$ssl_protocol"}';
+
+map "${RELAY_HTTPS_PORT}" $relay_https_authority {
+    "443" "${RELAY_SERVER_NAME}";
+    default "${RELAY_SERVER_NAME}:${RELAY_HTTPS_PORT}";
+}
+
+server {
+    listen 80;
+    server_name ${RELAY_SERVER_NAME};
+    access_log /var/log/nginx/access.log relay;
+    return 308 https://$relay_https_authority$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${RELAY_SERVER_NAME};
+    access_log /var/log/nginx/access.log relay;
+
+    ssl_certificate /etc/nginx/certs/server.crt;
+    ssl_certificate_key /etc/nginx/certs/server.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    server_tokens off;
+
+    if ($host != ${RELAY_SERVER_NAME}) {
+        return 421;
+    }
+
+    # Resolve Compose service names on requests; container IPs can change
+    # on restart and the proxy can start before application containers.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 5s;
+
+    location ~ ^/api/v1/auth(?:/|$) {
+        set $identity_upstream identity-api:8080;
+        proxy_pass http://$identity_upstream;
+        proxy_read_timeout 30s;
+    }
+
+    location ~ ^/api/v1/items(?:/|$) {
+        set $content_upstream content:8080;
+        proxy_pass http://$content_upstream;
+        client_max_body_size 210m;
+        proxy_request_buffering off;
+        proxy_read_timeout 75s;
+    }
+
+    location / {
+        return 404;
+    }
+}

@@ -1,0 +1,24 @@
+type: object
+additionalProperties: false
+required:
+  - user_id
+  - session_id
+  - access_expires_at
+  - session_expires_at
+properties:
+  user_id:
+    type: string
+    format: uuid
+  session_id:
+    type: string
+    format: uuid
+  access_expires_at:
+    type: string
+    format: date-time
+    description: Access token expiry. Refresh before this time.
+  session_expires_at:
+    type: string
+    format: date-time
+    description: |
+      Session and refresh expiry, up to 30 days after login.
+      Rounded down to whole seconds.

@@ -4,33 +4,39 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type App struct {
-	log             *slog.Logger
-	server          *http.Server
-	pool            *pgxpool.Pool
-	identity        Identity
-	receipts        receiptCleaner
-	shutdownTimeout time.Duration
-	ready           atomic.Bool
-	listenAddress   atomic.Value
+	log               *zap.Logger
+	server            *http.Server
+	pool              *pgxpool.Pool
+	redis             *redis.Client
+	receipts          receiptCleaner
+	shutdownTimeout   time.Duration
+	acceptingRequests atomic.Bool
+	listenAddress     atomic.Value
 }
 
-func (a *App) Address() string {
+func (a *App) HTTPAddress() string {
 	address, _ := a.listenAddress.Load().(string)
 	return address
 }
 
-func (a *App) Run(ctx context.Context) error {
+func (a *App) Run(ctx context.Context) (runErr error) {
 	defer a.pool.Close()
+	defer func() {
+		if err := a.redis.Close(); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("close Redis: %w", err))
+		}
+	}()
 
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.server.Addr)
 	if err != nil {
@@ -53,24 +59,26 @@ func (a *App) Run(ctx context.Context) error {
 			<-cleanupDone
 		}()
 	}
-	a.ready.Store(true)
-	a.log.Info("Content HTTP server started", "address", listener.Addr().String())
+	a.acceptingRequests.Store(true)
+	a.log.Info("Content HTTP server started", zap.String("address", listener.Addr().String()))
 
 	select {
 	case err := <-serveErr:
-		a.ready.Store(false)
+		a.acceptingRequests.Store(false)
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
 		return fmt.Errorf("serve HTTP: %w", err)
 	case <-ctx.Done():
-		a.ready.Store(false)
+		a.acceptingRequests.Store(false)
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.shutdownTimeout)
 	defer cancel()
 	if err := a.server.Shutdown(shutdownCtx); err != nil {
-		_ = a.server.Close()
+		if closeErr := a.server.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close HTTP: %w", closeErr))
+		}
 		return fmt.Errorf("shutdown HTTP: %w", err)
 	}
 	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -79,72 +87,12 @@ func (a *App) Run(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) health(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK)
-}
-
-func (a *App) readiness(w http.ResponseWriter, r *http.Request) {
-	if !a.ready.Load() {
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
-		return
+func (a *App) checkReadiness(ctx context.Context) error {
+	if !a.acceptingRequests.Load() {
+		return errors.New("application is not accepting requests")
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-	defer cancel()
 	if err := a.pool.Ping(ctx); err != nil {
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
-		return
+		return fmt.Errorf("check PostgreSQL readiness: %w", err)
 	}
-	if err := a.identity.Check(r.Context()); err != nil {
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-}
-
-type statusWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *statusWriter) WriteHeader(status int) {
-	if status < http.StatusOK {
-		w.ResponseWriter.WriteHeader(status)
-		return
-	}
-	if w.status != 0 {
-		return
-	}
-	w.status = status
-	w.ResponseWriter.WriteHeader(status)
-}
-
-func (w *statusWriter) Write(body []byte) (int, error) {
-	if w.status == 0 {
-		w.WriteHeader(http.StatusOK)
-	}
-	return w.ResponseWriter.Write(body)
-}
-
-func (w *statusWriter) Unwrap() http.ResponseWriter {
-	return w.ResponseWriter
-}
-
-func (a *App) logRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		started := time.Now()
-		response := &statusWriter{
-			ResponseWriter: w,
-		}
-		next.ServeHTTP(response, r)
-		status := response.status
-		if status == 0 {
-			status = http.StatusOK
-		}
-		a.log.InfoContext(r.Context(), "HTTP request",
-			"method", r.Method,
-			"status", status,
-			"request_id", response.Header().Get("X-Request-ID"),
-			"duration", time.Since(started),
-		)
-	})
+	return nil
 }

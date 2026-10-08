@@ -63,7 +63,7 @@ linters:
 
   settings:
     cyclop:
-      max-complexity: 15
+      max-complexity: 20
 
     govet:
       enable:

@@ -32,7 +32,7 @@ func (r *Repository) Get(
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Item{}, itemusecase.ErrItemNotFound
 		}
-		return domain.Item{}, err
+		return domain.Item{}, fmt.Errorf("query item: %w", err)
 	}
 	item, err := storedItem.ToDomain()
 	if err != nil {
@@ -61,7 +61,7 @@ func (r *Repository) GetForUpdate(
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Item{}, itemusecase.ErrItemNotFound
 		}
-		return domain.Item{}, err
+		return domain.Item{}, fmt.Errorf("lock item: %w", err)
 	}
 	item, err := storedItem.ToDomain()
 	if err != nil {

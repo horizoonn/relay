@@ -1,0 +1,51 @@
+delete:
+  operationId: RevokeSession
+  summary: Revoke a session
+  description: |
+    Requires an active calling session and matching CSRF cookie/header. Missing
+    or foreign sessions return SESSION_NOT_FOUND; an owned inactive target
+    returns 204. Revoking the current session clears browser cookies;
+    revoking another session leaves them unchanged.
+  tags: [Authentication]
+  security:
+    - AccessCookie: []
+  parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - $ref: ../components/parameters/origin.yaml
+    - $ref: ../components/parameters/csrf_cookie.yaml
+    - $ref: ../components/parameters/csrf_header.yaml
+  responses:
+    '204':
+      description: Session revoked or already inactive.
+      headers:
+        X-Request-Id:
+          $ref: ../components/headers/x_request_id.yaml
+        Set-Cookie:
+          description: Three cookie deletions when revoking the current session.
+          schema:
+            type: array
+            minItems: 3
+            maxItems: 3
+            items:
+              type: string
+    '400':
+      $ref: ../components/responses/problem.yaml
+    '401':
+      $ref: ../components/responses/problem.yaml
+    '403':
+      $ref: ../components/responses/problem.yaml
+    '404':
+      $ref: ../components/responses/problem.yaml
+    '429':
+      $ref: ../components/responses/problem.yaml
+    '503':
+      $ref: ../components/responses/problem.yaml
+    '500':
+      $ref: ../components/responses/problem.yaml
+    default:
+      $ref: ../components/responses/problem.yaml

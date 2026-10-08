@@ -14,6 +14,7 @@ vars:
   GRPCURL_VERSION: "v1.9.4"
   ENVSUBST_VERSION: "v1.4.3"
   GOVULNCHECK_VERSION: "v1.8.0"
+  MOCKERY_VERSION: "v3.7.4"
 
   BIN_DIR: "{{.ROOT_DIR}}/bin"
 
@@ -25,12 +26,15 @@ vars:
   GRPCURL: "{{.BIN_DIR}}/grpcurl"
   ENVSUBST: "{{.BIN_DIR}}/envsubst"
   GOVULNCHECK: "{{.BIN_DIR}}/govulncheck"
+  MOCKERY: "{{.BIN_DIR}}/mockery"
 
   NODE_MODULES_DIR: "{{.ROOT_DIR}}/node_modules/.bin"
   REDOCLY: "{{.NODE_MODULES_DIR}}/redocly"
 
   CONTENT_OPENAPI_SOURCE: "{{.ROOT_DIR}}/shared/api/content/v1/content.openapi.yaml"
   CONTENT_OPENAPI_BUNDLE: "{{.ROOT_DIR}}/shared/api/bundles/content.openapi.v1.bundle.yaml"
+  IDENTITY_OPENAPI_SOURCE: "{{.ROOT_DIR}}/shared/api/identity/v1/identity.openapi.yaml"
+  IDENTITY_OPENAPI_BUNDLE: "{{.ROOT_DIR}}/shared/api/bundles/identity.openapi.v1.bundle.yaml"
 
   ENVDIR: "{{.ROOT_DIR}}/deploy/env"
 
@@ -72,6 +76,20 @@ tasks:
           GOBIN="{{.BIN_DIR}}" go install \
             github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
         fi
+
+  tools:mockery:
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - |
+        if [ ! -x "{{.MOCKERY}}" ] || [ "$("{{.MOCKERY}}" version)" != "{{.MOCKERY_VERSION}}" ]; then
+          GOBIN="{{.BIN_DIR}}" go install github.com/vektra/mockery/v3@{{.MOCKERY_VERSION}}
+        fi
+
+  mocks:generate:
+    desc: Generate selected Identity unit-test mocks
+    deps: [tools:mockery]
+    cmds:
+      - cd identity && GOWORK=off "{{.MOCKERY}}" --config ../.mockery.yml
 
   tools:buf:
     cmds:
@@ -129,6 +147,7 @@ tasks:
     desc: Format all Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         tool_ready=0
@@ -153,6 +172,7 @@ tasks:
     desc: Lint all Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         ERR=0
@@ -181,6 +201,7 @@ tasks:
     desc: Run go vet in all non-empty Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         for mod in {{.MODULES}}; do
@@ -196,6 +217,7 @@ tasks:
     desc: Run unit tests
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         ERR=0
@@ -231,6 +253,7 @@ tasks:
     desc: Check formatting without changing files
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         tool_ready=0
@@ -253,6 +276,7 @@ tasks:
     desc: Build all non-empty Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         for mod in {{.MODULES}}; do
@@ -268,6 +292,7 @@ tasks:
     desc: Run race-enabled tests in non-empty Go modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         for mod in {{.MODULES}}; do
@@ -280,13 +305,20 @@ tasks:
         done
 
   test:integration:
-    desc: Run Content PostgreSQL adapter tests against RELAY_CONTENT_TEST_DATABASE_URL
+    desc: Run integration tests for SERVICE=content|identity (default content)
+    vars:
+      SERVICE: '{{.SERVICE | default "content"}}'
     deps: [openapi:codegen]
     preconditions:
-      - sh: test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}"
-        msg: "Set RELAY_CONTENT_TEST_DATABASE_URL to an isolated migrated Content database, or run task test:db"
+      - sh: |
+          case "{{.SERVICE}}" in
+            content) test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}" ;;
+            identity) test -n "${RELAY_IDENTITY_TEST_DATABASE_URL:-}" ;;
+            *) exit 1 ;;
+          esac
+        msg: "Choose SERVICE=content|identity and set its RELAY_*_TEST_DATABASE_URL, or run task test:db"
     cmds:
-      - cd content && GOWORK=off go test -race -tags=integration -count=1 ./tests/integration/...
+      - cd {{.SERVICE}} && GOWORK=off go test -race -tags=integration -count=1 ./tests/integration/...
 
   test:search:perf:
     desc: Measure Content Search latency and PostgreSQL plans on 100k items
@@ -297,52 +329,105 @@ tasks:
       - sh: test -n "${RELAY_CONTENT_TEST_MIGRATOR_DATABASE_URL:-}"
         msg: "Set RELAY_CONTENT_TEST_MIGRATOR_DATABASE_URL to the migrator role for the same database"
     cmds:
-      - cd content && GOWORK=off go test -tags=integration,searchperf -run '^TestSearchPerformance$' -count=1 -v -timeout=15m ./tests/integration/...
+      - >-
+        cd content && GOWORK=off go test -tags=integration,searchperf
+        -run '^TestSearchPerformance$' -count=1 -v -timeout=15m ./tests/integration/...
 
   test:component:
-    desc: Run Content HTTP to PostgreSQL tests against RELAY_CONTENT_TEST_DATABASE_URL
+    desc: Run component tests for SERVICE=content|identity (default content)
+    vars:
+      SERVICE: '{{.SERVICE | default "content"}}'
     deps: [openapi:codegen]
     preconditions:
-      - sh: test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}"
-        msg: "Set RELAY_CONTENT_TEST_DATABASE_URL to an isolated migrated Content database, or run task test:db"
+      - sh: |
+          case "{{.SERVICE}}" in
+            content) test -n "${RELAY_CONTENT_TEST_DATABASE_URL:-}" ;;
+            identity) test -n "${RELAY_IDENTITY_TEST_DATABASE_URL:-}" ;;
+            *) exit 1 ;;
+          esac
+        msg: "Choose SERVICE=content|identity and set its RELAY_*_TEST_DATABASE_URL, or run task test:db"
     cmds:
-      - cd content && GOWORK=off go test -tags=component -count=1 ./tests/component/...
+      - cd {{.SERVICE}} && GOWORK=off go test -race -tags=component -count=1 ./tests/component/...
 
   test:db:
-    desc: Run Content integration and component tests on an isolated PostgreSQL 18 stack
+    desc: Run Content and Identity integration/component tests on isolated PostgreSQL 18, Redis and Mailpit
     cmds:
       - task: env:init
       - |
         set -eu
         set -a
         . "{{.CONTENT_ENV_FILE}}"
+        . "{{.IDENTITY_ENV_FILE}}"
         set +a
-        export COMPOSE_PROJECT_NAME="relay-content-test-${GITHUB_RUN_ID:-local}-$$"
+        export COMPOSE_PROJECT_NAME="relay-db-test-${GITHUB_RUN_ID:-local}-$$"
         export POSTGRES_BIND_HOST=127.0.0.1
         export POSTGRES_EXTERNAL_PORT=0
+        redis_override=$(mktemp /tmp/relay-redis-test.XXXXXX.yml)
+        cat > "$redis_override" <<'YAML'
+        services:
+          mailpit:
+            profiles: []
+            ports: !override
+              - "127.0.0.1::8025"
+              - "127.0.0.1::1025"
+          redis:
+            networks: [relay-net]
+            ports:
+              - "127.0.0.1::6379"
+        YAML
         cleanup() {
-          {{.COMPOSE}} down --volumes --remove-orphans
+          {{.COMPOSE}} -f "$redis_override" --profile mail down --volumes --remove-orphans
+          rm -f "$redis_override"
         }
         trap cleanup EXIT
-        {{.COMPOSE}} up -d --wait postgres
-        {{.COMPOSE}} run --rm db-bootstrap
-        {{.COMPOSE}} run --rm --build content-migrate
-        port=$({{.COMPOSE}} port postgres 5432 | sed 's/.*://')
-        export PGHOST=127.0.0.1 PGPORT="$port" PGUSER="$CONTENT_APP_USER"
-        export PGPASSWORD="$CONTENT_APP_PASSWORD" PGDATABASE="$CONTENT_DB"
-        export RELAY_CONTENT_TEST_DATABASE_URL="host=127.0.0.1 port=$port sslmode=disable"
-        task test:integration
-        task test:component
+        {{.COMPOSE}} -f "$redis_override" --profile mail up -d --wait postgres redis mailpit
+        {{.COMPOSE}} -f "$redis_override" --profile mail run --rm db-bootstrap
+        for service in content identity; do
+          {{.COMPOSE}} -f "$redis_override" --profile mail run --rm --build "$service-migrate"
+        done
+        port=$({{.COMPOSE}} -f "$redis_override" --profile mail port postgres 5432 | sed 's/.*://')
+        redis_port=$({{.COMPOSE}} -f "$redis_override" --profile mail port redis 6379 | sed 's/.*://')
+        test "$redis_port" -gt 0
+        export RELAY_IDENTITY_TEST_REDIS_URL="redis://127.0.0.1:$redis_port/0"
+        export RELAY_CONTENT_TEST_REDIS_URL="$RELAY_IDENTITY_TEST_REDIS_URL"
+        smtp_port=$({{.COMPOSE}} -f "$redis_override" --profile mail port mailpit 1025 | sed 's/.*://')
+        mail_port=$({{.COMPOSE}} -f "$redis_override" --profile mail port mailpit 8025 | sed 's/.*://')
+        export RELAY_IDENTITY_TEST_SMTP_ADDR="127.0.0.1:$smtp_port"
+        export RELAY_IDENTITY_TEST_MAILPIT_URL="http://127.0.0.1:$mail_port"
+        export PGHOST=127.0.0.1 PGPORT="$port"
+        for service in content identity; do
+          case "$service" in
+            content)
+              export PGUSER="$CONTENT_APP_USER" PGPASSWORD="$CONTENT_APP_PASSWORD" PGDATABASE="$CONTENT_DB"
+              export RELAY_CONTENT_TEST_DATABASE_URL="host=127.0.0.1 port=$port sslmode=disable"
+              ;;
+            identity)
+              export PGUSER="$IDENTITY_APP_USER" PGPASSWORD="$IDENTITY_APP_PASSWORD" PGDATABASE="$IDENTITY_DB"
+              export RELAY_IDENTITY_TEST_DATABASE_URL="host=127.0.0.1 port=$port sslmode=disable"
+              ;;
+          esac
+          task test:integration SERVICE="$service"
+          task test:component SERVICE="$service"
+        done
+
+  test:e2e:
+    desc: Run Identity and Content HTTPS scenarios on isolated Compose stacks
+    cmds:
+      - python3 tests/e2e/identity_test.py
+      - python3 tests/e2e/identity_test.py --content
+      - python3 tests/e2e/identity_test.py --account
 
   test:infra:
-    desc: Run infrastructure bootstrap, migrations, and isolation checks
+    desc: Run infrastructure bootstrap, migrations, isolation, and proxy checks
     cmds:
       - task: compose:test
+      - bash tests/infra/proxy_test.sh
 
   deps:tidy:
     desc: Run go mod tidy for all modules
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
 
@@ -358,6 +443,7 @@ tasks:
     desc: Check whether Go module metadata is tidy
     deps: [openapi:codegen]
     cmds:
+      - task: mocks:generate
       - |
         set -e
         for mod in {{.MODULES}}; do
@@ -381,6 +467,7 @@ tasks:
     cmds:
       - |
         if ! find shared/proto -type f -name '*.proto' -print -quit | grep -q .; then
+          rm -rf "{{.ROOT_DIR}}/shared/pkg/proto"
           echo "No protobuf contracts; skipping generation"
           exit 0
         fi
@@ -427,6 +514,7 @@ tasks:
     deps: [tools:redocly]
     cmds:
       - '"{{.REDOCLY}}" lint "{{.CONTENT_OPENAPI_SOURCE}}"'
+      - '"{{.REDOCLY}}" lint "{{.IDENTITY_OPENAPI_SOURCE}}"'
 
   openapi:bundle:
     desc: Bundle OpenAPI source contracts for generation and distribution
@@ -434,6 +522,7 @@ tasks:
     cmds:
       - mkdir -p "{{.ROOT_DIR}}/shared/api/bundles"
       - '"{{.REDOCLY}}" bundle "{{.CONTENT_OPENAPI_SOURCE}}" --output "{{.CONTENT_OPENAPI_BUNDLE}}"'
+      - '"{{.REDOCLY}}" bundle "{{.IDENTITY_OPENAPI_SOURCE}}" --output "{{.IDENTITY_OPENAPI_BUNDLE}}"'
 
   openapi:generate:
     desc: Generate Go code from bundled OpenAPI contracts
@@ -447,25 +536,24 @@ tasks:
     deps: [tools:ogen, tools:yq]
     cmds:
       - |
-        target=$("{{.YQ}}" e '."x-ogen".target' "{{.CONTENT_OPENAPI_BUNDLE}}")
-        package=$("{{.YQ}}" e '."x-ogen".package' "{{.CONTENT_OPENAPI_BUNDLE}}")
-        if [ -z "$target" ] || [ "$target" = "null" ] || [ -z "$package" ] || [ "$package" = "null" ]; then
-          echo "Missing x-ogen target/package in {{.CONTENT_OPENAPI_BUNDLE}}" >&2
-          exit 1
-        fi
-        case "$target" in
-          /*) ;;
-          *) target="{{.ROOT_DIR}}/${target#./}" ;;
-        esac
-        mkdir -p "$target"
-        (
-          cd "$target"
-          "{{.OGEN}}" \
-            --target . \
-            --package "$package" \
-            --clean \
-            "{{.CONTENT_OPENAPI_BUNDLE}}"
-        )
+        set -e
+        for bundle in "{{.CONTENT_OPENAPI_BUNDLE}}" "{{.IDENTITY_OPENAPI_BUNDLE}}"; do
+          target=$("{{.YQ}}" e '."x-ogen".target' "$bundle")
+          package=$("{{.YQ}}" e '."x-ogen".package' "$bundle")
+          if [ -z "$target" ] || [ "$target" = "null" ] || [ -z "$package" ] || [ "$package" = "null" ]; then
+            echo "Missing x-ogen target/package in $bundle" >&2
+            exit 1
+          fi
+          case "$target" in
+            /*) ;;
+            *) target="{{.ROOT_DIR}}/${target#./}" ;;
+          esac
+          mkdir -p "$target"
+          (
+            cd "$target"
+            "{{.OGEN}}" --target . --package "$package" --clean "$bundle"
+          )
+        done
 
   contracts:lint:
     desc: Lint all machine-readable contracts
@@ -474,10 +562,11 @@ tasks:
       - task: openapi:lint
 
   generate:
-    desc: Generate all current contracts
+    desc: Generate contracts and selected unit-test mocks
     cmds:
       - task: proto:generate
       - task: openapi:generate
+      - task: mocks:generate
 
   vuln:
     desc: Scan non-empty Go modules for known vulnerabilities
@@ -538,11 +627,24 @@ tasks:
     cmds:
       - task: infra:config
 
+  proxy:up:
+    desc: Validate and start the optional HTTPS reverse proxy
+    deps: [infra:config]
+    preconditions:
+      - sh: >-
+          test -s "{{.ROOT_DIR}}/deploy/proxy/certs/server.crt" &&
+          test -s "{{.ROOT_DIR}}/deploy/proxy/certs/server.key"
+        msg: "Missing proxy TLS certificate: see deploy/proxy/README.md"
+    cmds:
+      - >-
+        {{.COMPOSE}} run --rm --no-deps nginx nginx -t
+      - "{{.COMPOSE}} up -d nginx"
+
   infra:up:
-    desc: Start PostgreSQL, Kafka, topics, and Kafka UI
+    desc: Start PostgreSQL, Redis, Kafka, topics, and Kafka UI
     deps: [infra:config]
     cmds:
-      - "{{.COMPOSE}} up -d --wait postgres kafka"
+      - "{{.COMPOSE}} up -d --wait postgres redis kafka"
       - "{{.COMPOSE}} up --no-log-prefix kafka-init"
       - "{{.COMPOSE}} up -d --wait kafka-ui"
 
@@ -594,7 +696,7 @@ tasks:
     desc: Stop the local stack without deleting persisted data
     deps: [env:init]
     cmds:
-      - "{{.COMPOSE}} down --remove-orphans"
+      - "{{.COMPOSE}} --profile gateway --profile mail down --remove-orphans"
 
   compose:test:
     desc: Start an isolated stack and verify bootstrap and migrations twice
@@ -602,7 +704,7 @@ tasks:
     cmds:
       - |
         set -e
-        export COMPOSE_PROJECT_NAME="relay-ci-${GITHUB_RUN_ID:-local}"
+        export COMPOSE_PROJECT_NAME="relay-ci-${GITHUB_RUN_ID:-local}-$$"
         cleanup() {
           {{.COMPOSE}} down --volumes --remove-orphans
         }
