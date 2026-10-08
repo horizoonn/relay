@@ -65,6 +65,13 @@ vars:
   MOCKERY: "{{.BIN_DIR}}/mockery"
 
 tasks:
+  test:e2e:
+    desc: Run Identity and Content HTTPS scenarios on isolated Compose stacks
+    cmds:
+      - python3 tests/e2e/identity_test.py
+      - python3 tests/e2e/identity_test.py --content
+      - python3 tests/e2e/identity_test.py --account
+
   proxy:up:
     desc: Validate and start the optional HTTPS reverse proxy
     deps: [infra:config]
@@ -375,9 +382,10 @@ tasks:
         task test:component
 
   test:infra:
-    desc: Run infrastructure bootstrap, migrations, and isolation checks
+    desc: Run infrastructure bootstrap, migrations, isolation, and proxy checks
     cmds:
       - task: compose:test
+      - bash tests/infra/proxy_test.sh
 
   deps:tidy:
     desc: Run go mod tidy for all modules
