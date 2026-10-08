@@ -14,7 +14,7 @@ WORKDIR /app
 
 COPY --from=goose-builder /out/goose /usr/local/bin/goose
 COPY --chown=app:app identity/migrations /migrations
-COPY --chown=app:app deploy/docker/run-migrations.sh /usr/local/bin/run-migrations
+COPY --chown=app:app deploy/postgres/run-migrations.sh /usr/local/bin/run-migrations
 
 USER app
 
@@ -34,6 +34,12 @@ RUN cd identity && GOWORK=off go mod download
 COPY identity ./identity
 COPY platform ./platform
 COPY shared ./shared
+
+ARG OGEN_VERSION=v1.24.0
+RUN cd shared && GOWORK=off go run github.com/ogen-go/ogen/cmd/ogen@${OGEN_VERSION} \
+    --target ./pkg/openapi/identity/v1 \
+    --package identity_v1 \
+    --clean ./api/bundles/identity.openapi.v1.bundle.yaml
 
 ARG TARGETOS=linux
 ARG TARGETARCH

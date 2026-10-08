@@ -35,6 +35,12 @@ profile.cov
 
 /deploy/env/*.env
 !/deploy/env/*.env.template
+/deploy/proxy/certs/
+/deploy/proxy/local-ca/
+/deploy/identity/keys/
+
+__pycache__/
+*.pyc
 
 # Generated unit-test mocks
 /identity/internal/usecase/session/mocks/

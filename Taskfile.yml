@@ -65,6 +65,19 @@ vars:
   MOCKERY: "{{.BIN_DIR}}/mockery"
 
 tasks:
+  proxy:up:
+    desc: Validate and start the optional HTTPS reverse proxy
+    deps: [infra:config]
+    preconditions:
+      - sh: >-
+          test -s "{{.ROOT_DIR}}/deploy/proxy/certs/server.crt" &&
+          test -s "{{.ROOT_DIR}}/deploy/proxy/certs/server.key"
+        msg: "Missing proxy TLS certificate: see deploy/proxy/README.md"
+    cmds:
+      - >-
+        {{.COMPOSE}} run --rm --no-deps nginx nginx -t
+      - "{{.COMPOSE}} up -d nginx"
+
   mocks:generate:
     desc: Generate selected Identity unit-test mocks
     deps: [tools:mockery]
@@ -570,10 +583,10 @@ tasks:
       - task: infra:config
 
   infra:up:
-    desc: Start PostgreSQL, Kafka, topics, and Kafka UI
+    desc: Start PostgreSQL, Redis, Kafka, topics, and Kafka UI
     deps: [infra:config]
     cmds:
-      - "{{.COMPOSE}} up -d --wait postgres kafka"
+      - "{{.COMPOSE}} up -d --wait postgres redis kafka"
       - "{{.COMPOSE}} up --no-log-prefix kafka-init"
       - "{{.COMPOSE}} up -d --wait kafka-ui"
 
@@ -633,7 +646,7 @@ tasks:
     cmds:
       - |
         set -e
-        export COMPOSE_PROJECT_NAME="relay-ci-${GITHUB_RUN_ID:-local}"
+        export COMPOSE_PROJECT_NAME="relay-ci-${GITHUB_RUN_ID:-local}-$$"
         cleanup() {
           {{.COMPOSE}} down --volumes --remove-orphans
         }

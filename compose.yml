@@ -4,3 +4,6 @@ include:
   - path: deploy/compose/delivery/compose.yml
   - path: deploy/compose/identity/compose.yml
   - path: deploy/compose/processing/compose.yml
+  - path: deploy/compose/proxy/compose.yml
+  - path: deploy/compose/redis/compose.yml
+  - path: deploy/compose/mail/compose.yml

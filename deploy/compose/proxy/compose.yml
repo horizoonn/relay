@@ -1,0 +1,24 @@
+services:
+  nginx:
+    image: nginx:1.30.5-trixie
+    profiles: [gateway]
+    environment:
+      RELAY_SERVER_NAME: ${RELAY_SERVER_NAME:-localhost}
+      RELAY_HTTPS_PORT: ${PROXY_HTTPS_PORT:-443}
+      NGINX_ENVSUBST_FILTER: RELAY_SERVER_NAME|RELAY_HTTPS_PORT
+    ports:
+      - "${PROXY_BIND_HOST:-127.0.0.1}:${PROXY_HTTP_PORT:-80}:80"
+      - "${PROXY_BIND_HOST:-127.0.0.1}:${PROXY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ../../proxy/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ../../proxy/certs:/etc/nginx/certs:ro
+    restart: unless-stopped
+    networks:
+      - relay-net
+      - identity-proxy
+
+networks:
+  identity-proxy:
+    ipam:
+      config:
+        - subnet: ${IDENTITY_PROXY_SUBNET:-172.31.254.0/28}

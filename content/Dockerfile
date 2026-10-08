@@ -14,7 +14,7 @@ WORKDIR /app
 
 COPY --from=goose-builder /out/goose /usr/local/bin/goose
 COPY --chown=app:app content/migrations /migrations
-COPY --chown=app:app deploy/docker/run-migrations.sh /usr/local/bin/run-migrations
+COPY --chown=app:app deploy/postgres/run-migrations.sh /usr/local/bin/run-migrations
 
 USER app
 
@@ -35,7 +35,8 @@ COPY content ./content
 COPY platform ./platform
 COPY shared ./shared
 
-RUN cd shared && GOWORK=off go run github.com/ogen-go/ogen/cmd/ogen \
+ARG OGEN_VERSION=v1.24.0
+RUN cd shared && GOWORK=off go run github.com/ogen-go/ogen/cmd/ogen@${OGEN_VERSION} \
     --target ./pkg/openapi/content/v1 \
     --package content_v1 \
     --clean ./api/bundles/content.openapi.v1.bundle.yaml
