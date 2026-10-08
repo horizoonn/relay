@@ -12,4 +12,5 @@ properties:
     nullable: true
     minLength: 1
     maxLength: 256
+    pattern: '^[^\x00]*$'
     description: Set a non-whitespace user title, or null to clear the override.

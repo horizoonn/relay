@@ -174,6 +174,13 @@ func TestItemInvalidMutation(t *testing.T) {
 			wantErr: domain.ErrInvalidDisplayTitle,
 		},
 		{
+			name: "NUL in title",
+			mutate: func(item *domain.Item) error {
+				return item.SetDisplayTitle("a\x00b", item.CreatedAt())
+			},
+			wantErr: domain.ErrInvalidDisplayTitle,
+		},
+		{
 			name: "zero keep time",
 			mutate: func(item *domain.Item) error {
 				return item.SetKeep(true, time.Time{})

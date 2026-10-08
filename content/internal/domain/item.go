@@ -217,5 +217,6 @@ func (i *Item) ApplyCapture(keep, later bool, now time.Time) error {
 }
 
 func validTitle(title string) bool {
-	return utf8.ValidString(title) && strings.TrimSpace(title) != "" && utf8.RuneCountInString(title) <= 256
+	return utf8.ValidString(title) && !strings.ContainsRune(title, '\x00') &&
+		strings.TrimSpace(title) != "" && utf8.RuneCountInString(title) <= 256
 }

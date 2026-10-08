@@ -19,6 +19,7 @@ properties:
     type: string
     minLength: 1
     maxLength: 256
+    pattern: '^[^\x00]*$'
     description: User title override. Omitted when absent.
   preview:
     type: string
